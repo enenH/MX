@@ -12,7 +12,7 @@ use memmap2::MmapMut;
 use std::fs::{File, OpenOptions};
 use std::path::PathBuf;
 use std::sync::RwLock;
-use crate::search::manager::ValuePair;
+use crate::search::engine::ValuePair;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchResultMode {
@@ -119,6 +119,17 @@ impl SearchResultManager {
         match self.current_mode {
             SearchResultMode::Exact => self.exact.remove_results_batch(indices),
             SearchResultMode::Fuzzy => Err(anyhow!("FuzzySearchResultManager not implemented yet")),
+        }
+    }
+
+    pub fn get_mode(&self) -> SearchResultMode {
+        self.current_mode
+    }
+
+    pub fn get_all_exact_results(&self) -> Result<Vec<ExactSearchResultItem>> {
+        match self.current_mode {
+            SearchResultMode::Exact => self.exact.get_all_results(),
+            SearchResultMode::Fuzzy => Err(anyhow!("Cannot get exact results in fuzzy mode")),
         }
     }
 }

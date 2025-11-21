@@ -273,6 +273,11 @@ impl ExactSearchResultManager {
         debug!("Removed {} results in batch, total count: {}", indices.len(), self.total_count);
         Ok(())
     }
+
+    /// Get all results (used for refine search)
+    pub fn get_all_results(&self) -> anyhow::Result<Vec<ExactSearchResultItem>> {
+        self.get_results(0, self.total_count)
+    }
 }
 
 impl Drop for ExactSearchResultManager {

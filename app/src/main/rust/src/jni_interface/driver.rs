@@ -1,23 +1,22 @@
-use crate::core::DRIVER_MANAGER;
+//! JNI methods for WuwaDriver
+
+use crate::core::{MemoryAccessMode, DRIVER_MANAGER};
 use crate::ext::jni::{JniResult, JniResultExt};
-use crate::throw_runtime_exception;
+use crate::wuwa::{WuWaDriver, WuwaMemRegionEntry};
 use anyhow::anyhow;
 use jni::JNIEnv;
-use jni::objects::{JIntArray, JObject, JObjectArray, JString, JValue, JValueOwned};
-use jni::sys::{JNI_FALSE, JNI_TRUE, jboolean, jint, jintArray, jlong, jobject, jsize};
+use jni::objects::{JClass, JIntArray, JObject, JObjectArray};
+use jni::sys::{JNI_FALSE, JNI_TRUE, jboolean, jint, jlong, jsize};
 use jni_macro::jni_method;
-use log::Level::Error;
 use log::{debug, error, info};
 use nix::libc::close;
 use nix::sys::mman::{MapFlags, ProtFlags, mmap, munmap};
 use obfstr::obfstr as s;
 use std::num::NonZeroUsize;
-use std::str::from_utf8;
 
 mod conversions {
-    use jni::objects::JClass;
     use super::*;
-    use crate::wuwa::{WuwaGetProcInfoCmd, WuwaMemRegionEntry};
+    use crate::wuwa::WuwaGetProcInfoCmd;
 
     /// 从C风格字符串数组中提取UTF-8字符串
     pub fn extract_cstring(bytes: &[u8]) -> String {
@@ -71,6 +70,81 @@ mod conversions {
         )?)
     }
 }
+
+// Core driver setup JNI methods
+
+#[jni_method(90, "moe/fuqiuluo/mamu/driver/WuwaDriver", "nativeSetDriverFd", "(I)Z")]
+pub fn jni_set_driver_fd(mut env: JNIEnv, _obj: JObject, fd: i32) -> jboolean {
+    (|| -> JniResult<jboolean> {
+        if DRIVER_MANAGER.is_poisoned() {
+            return Err(anyhow!("DriverManager is poisoned"));
+        }
+
+        let mut manager = DRIVER_MANAGER
+            .write()
+            .map_err(|_| anyhow!("Failed to acquire DriverManager write lock"))?;
+
+        if !manager.is_driver_loaded() {
+            manager.set_driver(WuWaDriver::from_fd(fd));
+            debug!("{}: {}, {}", s!("设置驱动文件描述符"), fd, s!("驱动已初始化"));
+        }
+
+        if let Some(driver) = manager.get_driver() {
+            let Ok(proc_info) = (unsafe { driver.get_process_info(nix::libc::getpid()) }) else {
+                return Err(anyhow!("Failed to get process info"));
+            };
+            let split_index = proc_info
+                .name
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(proc_info.name.len());
+            let cmdline = String::from_utf8(proc_info.name[0..split_index].to_vec()).unwrap_or_default();
+            if !cmdline.contains(s!("fuqiuluo")) {
+                return Err(anyhow!("Current process name verification failed"));
+            }
+
+            debug!("{}: {}", s!("驱动初始化成功，当前进程名称"), cmdline);
+        } else {
+            return Err(anyhow!("Failed to initialize driver"));
+        }
+
+        Ok(JNI_TRUE)
+    })()
+    .or_throw(&mut env)
+}
+
+#[jni_method(90, "moe/fuqiuluo/mamu/driver/WuwaDriver", "nativeIsLoaded", "()Z")]
+pub fn jni_is_loaded(_env: JNIEnv, _obj: JObject) -> jboolean {
+    if let Ok(manager) = DRIVER_MANAGER.read() {
+        if manager.is_driver_loaded() {
+            JNI_TRUE
+        } else {
+            JNI_FALSE
+        }
+    } else {
+        JNI_FALSE
+    }
+}
+
+#[jni_method(90, "moe/fuqiuluo/mamu/driver/WuwaDriver", "nativeSetMemoryAccessMode", "(I)V")]
+pub fn jni_set_memory_access_mode(mut env: JNIEnv, _obj: JObject, mode_id: i32) {
+    (|| -> JniResult<()> {
+        if DRIVER_MANAGER.is_poisoned() {
+            return Err(anyhow!("DriverManager is poisoned"));
+        }
+        let mut manager = DRIVER_MANAGER
+            .write()
+            .map_err(|_| anyhow!("Failed to acquire DriverManager write lock"))?;
+        let mode =
+            MemoryAccessMode::from_id(mode_id).ok_or_else(|| anyhow!("Invalid memory access mode id: {}", mode_id))?;
+        manager.set_access_mode(mode)?;
+        debug!("{}: {}, {}", s!("设置内存访问模式"), mode_id, format!("{:?}", mode));
+        Ok(())
+    })()
+    .or_throw(&mut env)
+}
+
+// Process management JNI methods
 
 #[jni_method(80, "moe/fuqiuluo/mamu/driver/WuwaDriver", "nativeIsProcessAlive", "(I)Z")]
 pub fn jni_is_proc_alive(mut env: JNIEnv, _obj: JObject, pid: jint) -> jboolean {
@@ -214,7 +288,6 @@ pub fn jni_query_mem_regions<'l>(
     _obj: JObject,
     pid: jint,
 ) -> JObjectArray<'l> {
-    use crate::wuwa::WuwaMemRegionEntry;
     use std::os::fd::BorrowedFd;
 
     (|| -> JniResult<JObjectArray<'l>> {

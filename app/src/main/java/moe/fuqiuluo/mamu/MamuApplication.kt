@@ -5,7 +5,9 @@ import android.app.Application
 import android.util.Log
 import com.tencent.mmkv.MMKV
 import moe.fuqiuluo.mamu.driver.SearchEngine
+import moe.fuqiuluo.mamu.driver.WuwaDriver
 import moe.fuqiuluo.mamu.floating.ext.chunkSize
+import moe.fuqiuluo.mamu.floating.ext.memoryAccessMode
 import moe.fuqiuluo.mamu.floating.ext.memoryBufferSize
 import java.io.File
 import kotlin.system.exitProcess
@@ -45,6 +47,8 @@ class MamuApplication : Application() {
             Log.e(TAG, "Failed to initialize Search Engine")
             exitProcess(1)
         }
+
+        WuwaDriver.setMemoryAccessMode(mmkv.memoryAccessMode) // 设置内存访问模式，同步到 WuwaDriver
 
         Thread.setDefaultUncaughtExceptionHandler { thread: Thread, throwable: Throwable ->
             if (throwable.message != null &&

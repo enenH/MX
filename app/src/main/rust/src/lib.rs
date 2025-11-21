@@ -1,10 +1,9 @@
 #![allow(non_snake_case)]
 pub mod core;
-pub mod driver;
 pub mod wuwa;
 pub mod ext;
 pub mod search;
-pub mod mem_ops;
+pub mod jni_interface;
 
 use android_logger::Config;
 use jni::sys::{jint, JNI_VERSION_1_6};

@@ -1,7 +1,9 @@
+//! JNI methods for SearchEngine
+
 use std::ops::Not;
-use super::manager::{SEARCH_ENGINE_MANAGER, SearchProgressCallback};
-use super::parser::parse_search_query;
-use super::types::ValueType;
+use crate::search::engine::{SEARCH_ENGINE_MANAGER, SearchProgressCallback};
+use crate::search::parser::parse_search_query;
+use crate::search::types::ValueType;
 use crate::core::DRIVER_MANAGER;
 use crate::ext::jni::{JniResult, JniResultExt};
 use crate::search::SearchResultItem;
@@ -133,14 +135,13 @@ pub fn jni_init_search_engine(
     .or_throw(&mut env)
 }
 
-#[jni_method(70, "moe/fuqiuluo/mamu/driver/SearchEngine", "nativeSearch", "(Ljava/lang/String;I[JILmoe/fuqiuluo/mamu/driver/SearchProgressCallback;)J")]
+#[jni_method(70, "moe/fuqiuluo/mamu/driver/SearchEngine", "nativeSearch", "(Ljava/lang/String;I[JLmoe/fuqiuluo/mamu/driver/SearchProgressCallback;)J")]
 pub fn jni_search(
     mut env: JNIEnv,
     _class: JObject,
     query_str: JString,
     default_type: jint,
     regions: JLongArray,
-    memory_mode: jint, // 0 = 无, 1 = 透写, 2 = 无缓, 3 = 普通
     callback_obj: JObject,
 ) -> jlong {
     (|| -> JniResult<jlong> {
@@ -179,7 +180,7 @@ pub fn jni_search(
             .write()
             .map_err(|_| anyhow!("Failed to acquire SearchEngineManager write lock"))?;
 
-        let count = manager.search_memory(&search_query, &memory_regions, memory_mode, callback)?;
+        let count = manager.search_memory(&search_query, &memory_regions, callback)?;
 
         Ok(count as jlong)
     })()
@@ -239,17 +240,16 @@ pub fn jni_get_results(mut env: JNIEnv, _class: JObject, start: jint, size: jint
         for (i, (native_position, item)) in results.into_iter().enumerate() {
             let obj = match item {
                 SearchResultItem::Exact(exact) => {
-                    let value_str = if let Some(bind_proc) = driver_manager.get_bound_process() {
+                    let value_str = {
                         let size = exact.typ.size();
                         let mut buffer = vec![0u8; size];
 
-                        if bind_proc.read_memory(exact.address as usize, &mut buffer, None).is_ok() {
+                        // 使用统一的内存读取方法，遵循配置的 access_mode
+                        if driver_manager.read_memory_unified(exact.address, &mut buffer, None).is_ok() {
                             format_value(&buffer, exact.typ)
                         } else {
                             "N/A".to_string()
                         }
-                    } else {
-                        "N/A".to_string()
                     };
 
                     let value_jstring = env.new_string(&value_str)?;
@@ -380,6 +380,62 @@ pub fn jni_clear_filter(mut env: JNIEnv, _class: JObject) {
         manager.clear_filter()?;
 
         Ok(())
+    })()
+    .or_throw(&mut env)
+}
+
+#[jni_method(70, "moe/fuqiuluo/mamu/driver/SearchEngine", "nativeGetCurrentSearchMode", "()I")]
+pub fn jni_get_current_search_mode(mut env: JNIEnv, _class: JObject) -> jint {
+    (|| -> JniResult<jint> {
+        let manager = SEARCH_ENGINE_MANAGER
+            .read()
+            .map_err(|_| anyhow!("Failed to acquire SearchEngineManager read lock"))?;
+
+        let mode = manager.get_current_mode()?;
+        let mode_value = match mode {
+            crate::search::result_manager::SearchResultMode::Exact => 0,
+            crate::search::result_manager::SearchResultMode::Fuzzy => 1,
+        };
+
+        Ok(mode_value)
+    })()
+    .or_throw(&mut env)
+}
+
+#[jni_method(70, "moe/fuqiuluo/mamu/driver/SearchEngine", "nativeRefineSearch", "(Ljava/lang/String;ILmoe/fuqiuluo/mamu/driver/SearchProgressCallback;)J")]
+pub fn jni_refine_search(
+    mut env: JNIEnv,
+    _class: JObject,
+    query_str: JString,
+    default_type: jint,
+    callback_obj: JObject,
+) -> jlong {
+    (|| -> JniResult<jlong> {
+        let query: String = env.get_string(&query_str)?.into();
+
+        let value_type =
+            jint_to_value_type(default_type).ok_or_else(|| anyhow!("Invalid value type: {}", default_type))?;
+
+        let search_query = parse_search_query(&query, value_type).map_err(|e| anyhow!("Parse error: {}", e))?;
+
+        let callback: Option<Arc<dyn SearchProgressCallback>> = if callback_obj.is_null() {
+            None
+        } else {
+            let vm = env.get_java_vm()?;
+            let global_ref = env.new_global_ref(callback_obj)?;
+            Some(Arc::new(JniCallback {
+                vm,
+                callback: global_ref,
+            }))
+        };
+
+        let mut manager = SEARCH_ENGINE_MANAGER
+            .write()
+            .map_err(|_| anyhow!("Failed to acquire SearchEngineManager write lock"))?;
+
+        let count = manager.refine_search(&search_query, callback)?;
+
+        Ok(count as jlong)
     })()
     .or_throw(&mut env)
 }

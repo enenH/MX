@@ -6,28 +6,6 @@ import moe.fuqiuluo.mamu.floating.ext.divideToSimpleMemoryRange
 import moe.fuqiuluo.mamu.floating.model.DisplayValueType
 import moe.fuqiuluo.mamu.floating.model.MemoryRange
 
-/**
- * 搜索模式枚举
- * 对应 Rust 层的 SearchResultMode
- */
-enum class SearchMode(val nativeValue: Int) {
-    /**
-     * 精确搜索（包含联合搜索/范围搜索）
-     */
-    EXACT(0),
-
-    /**
-     * 模糊搜索
-     */
-    FUZZY(1);
-
-    companion object {
-        fun fromNativeValue(value: Int): SearchMode {
-            return entries.firstOrNull { it.nativeValue == value } ?: EXACT
-        }
-    }
-}
-
 object SearchEngine {
     /**
      * 初始化搜索引擎
@@ -52,7 +30,6 @@ object SearchEngine {
      * @param query 搜索内容
      * @param type 数据类型
      * @param ranges 内存区域集合
-     * @param memoryMode 内存搜索模式
      * @param cb 搜索进度回调
      * @return 搜索到的结果数量
      */
@@ -60,7 +37,6 @@ object SearchEngine {
         query: String,
         type: DisplayValueType,
         ranges: Set<MemoryRange>,
-        memoryMode: Int,
         cb: SearchProgressCallback
     ): Long {
         val nativeRegions = mutableListOf<Long>()
@@ -73,7 +49,7 @@ object SearchEngine {
                 nativeRegions.add(it.end)
             }
 
-        return nativeSearch(query, type.nativeId, nativeRegions.toLongArray(), memoryMode, cb)
+        return nativeSearch(query, type.nativeId, nativeRegions.toLongArray(), cb)
     }
 
     /**
@@ -81,7 +57,6 @@ object SearchEngine {
      * @param query 搜索内容
      * @param type 数据类型
      * @param regions 内存区域数组，格式为[start1, end1, start2, end2, ...]
-     * @param memoryMode 内存搜索模式
      * @param cb 搜索进度回调
      * @return 搜索到的结果数量
      */
@@ -89,10 +64,9 @@ object SearchEngine {
         query: String,
         type: DisplayValueType,
         regions: LongArray,
-        memoryMode: Int,
         cb: SearchProgressCallback
     ): Long {
-        return nativeSearch(query, type.nativeId, regions, memoryMode, cb)
+        return nativeSearch(query, type.nativeId, regions, cb)
     }
 
     /**
@@ -196,10 +170,9 @@ object SearchEngine {
     fun refineSearch(
         query: String,
         type: DisplayValueType,
-        memoryMode: Int,
         cb: SearchProgressCallback
     ): Long {
-        return nativeRefineSearch(query, type.nativeId, memoryMode, cb)
+        return nativeRefineSearch(query, type.nativeId, cb)
     }
 
     private external fun nativeInitSearchEngine(bufferSize: Long, cacheFileDir: String, chunkSize: Long): Boolean
@@ -207,7 +180,6 @@ object SearchEngine {
         query: String,
         defaultType: Int,
         regions: LongArray,
-        memoryMode: Int,
         cb: SearchProgressCallback
     ): Long
 
@@ -242,7 +214,6 @@ object SearchEngine {
     private external fun nativeRefineSearch(
         query: String,
         defaultType: Int,
-        memoryMode: Int,
         cb: SearchProgressCallback
     ): Long
 }

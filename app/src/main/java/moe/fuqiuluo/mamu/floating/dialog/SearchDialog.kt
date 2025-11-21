@@ -249,7 +249,6 @@ class SearchDialog(
         }
 
         val mmkv = MMKV.defaultMMKV()
-        val memoryMode = mmkv.memoryAccessMode
 
         // 执行搜索的通用函数
         val preCheck: (String) -> Boolean = preCheck@{ expression ->
@@ -293,7 +292,6 @@ class SearchDialog(
                         expression,
                         valueType,
                         nativeRegions.toLongArray(),
-                        memoryMode,
                         SearchCallback()
                     )
                 }.onFailure {
@@ -315,7 +313,6 @@ class SearchDialog(
                     SearchEngine.refineSearch(
                         expression,
                         valueType,
-                        memoryMode,
                         RefineSearchCallback()
                     )
                 }.onFailure {

@@ -1,8 +1,9 @@
+//! JNI methods for MemoryOps
+
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JObject};
 use jni::sys::{jint, jlong};
 use jni_macro::jni_method;
-use log::debug;
 use std::alloc::{Layout, alloc, dealloc};
 
 /// Allocate memory of specified size (like malloc)
@@ -20,7 +21,6 @@ pub fn jni_practice_alloc(_env: JNIEnv, _obj: JObject, size: jint) -> jlong {
     }
 
     let address = ptr as jlong;
-    debug!("Practice memory allocated: address=0x{:x}, size={}", address, size);
 
     address
 }
@@ -38,8 +38,6 @@ pub fn jni_practice_free(_env: JNIEnv, _obj: JObject, address: jlong, size: jint
     unsafe {
         dealloc(ptr, layout);
     }
-
-    debug!("Practice memory freed: address=0x{:x}, size={}", address, size);
 }
 
 /// Read bytes from memory
@@ -50,8 +48,6 @@ pub fn jni_practice_read<'l>(mut env: JNIEnv<'l>, _obj: JObject, address: jlong,
 
     let result = env.new_byte_array(size).unwrap();
     env.set_byte_array_region(&result, 0, bytemuck::cast_slice(bytes)).unwrap();
-
-    debug!("Practice memory read: address=0x{:x}, size={}", address, size);
 
     result
 }
@@ -68,8 +64,6 @@ pub fn jni_practice_write(mut env: JNIEnv, _obj: JObject, address: jlong, data: 
     unsafe {
         std::ptr::copy_nonoverlapping(buffer.as_ptr() as *const u8, ptr, len);
     }
-
-    debug!("Practice memory write: address=0x{:x}, size={}", address, len);
 }
 
 /// Get current process ID

@@ -122,7 +122,7 @@ var MMKV.freezeInterval: Int
 var MMKV.memoryAccessMode: Int
     get() = decodeInt(KEY_MEMORY_ACCESS_MODE, DEFAULT_MEMORY_ACCESS_MODE)
     set(value) = run {
-        WuwaDriver.setMemoryAccessMode(value)
+        WuwaDriver.setMemoryAccessMode(value) // 每次改变都同步到底层驱动
         encode(KEY_MEMORY_ACCESS_MODE, value)
     }
 

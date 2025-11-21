@@ -12,3 +12,6 @@ jni-macro/jni-derive/target
 *.old
 *.class
 *.jar
+
+CLAUDE.md
+REFACTOR_PLAN.md
