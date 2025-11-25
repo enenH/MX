@@ -93,7 +93,7 @@
     <string name="success_topmost_changed">Top-most layer rendering %s, restart overlay required</string>
     <string name="topmost_enabled">enabled</string>
     <string name="topmost_disabled">disabled</string>
-    <string name="success_search_complete">Search completed, found %1$d results in %2$dms</string>
+    <string name="success_search_complete">Search completed, found %1$d results in %2$s</string>
 
     <!-- Error Messages -->
     <string name="error_topmost_fallback">Top-most layer mode unavailable, falling back to normal mode</string>

@@ -445,3 +445,40 @@ pub fn jni_refine_search(
     })()
     .or_throw(&mut env)
 }
+
+#[jni_method(70, "moe/fuqiuluo/mamu/driver/SearchEngine", "nativeSetProgressBuffer", "(Ljava/nio/ByteBuffer;)Z")]
+pub fn jni_set_progress_buffer(mut env: JNIEnv, _class: JObject, buffer: JObject) -> jboolean {
+    (|| -> JniResult<jboolean> {
+        // 获取DirectByteBuffer的原始指针
+        let buffer = (&buffer).into();
+        let ptr = env.get_direct_buffer_address(buffer)?;
+        let capacity = env.get_direct_buffer_capacity(buffer)?;
+
+        if capacity < 20 {
+            return Err(anyhow!("Buffer too small, need at least 20 bytes"));
+        }
+
+        let mut manager = SEARCH_ENGINE_MANAGER
+            .write()
+            .map_err(|_| anyhow!("Failed to acquire SearchEngineManager write lock"))?;
+
+        manager.set_progress_buffer(ptr, capacity);
+
+        Ok(JNI_TRUE)
+    })()
+    .or_throw(&mut env)
+}
+
+#[jni_method(70, "moe/fuqiuluo/mamu/driver/SearchEngine", "nativeClearProgressBuffer", "()V")]
+pub fn jni_clear_progress_buffer(mut env: JNIEnv, _class: JObject) {
+    (|| -> JniResult<()> {
+        let mut manager = SEARCH_ENGINE_MANAGER
+            .write()
+            .map_err(|_| anyhow!("Failed to acquire SearchEngineManager write lock"))?;
+
+        manager.clear_progress_buffer();
+
+        Ok(())
+    })()
+    .or_throw(&mut env)
+}

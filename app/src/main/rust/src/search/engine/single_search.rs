@@ -1,3 +1,5 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, AtomicUsize};
 use super::super::types::{SearchValue, ValueType};
 use super::manager::{BPLUS_TREE_ORDER, PAGE_MASK, PAGE_SIZE, ValuePair};
 use crate::core::DRIVER_MANAGER;
@@ -6,7 +8,7 @@ use anyhow::{Result, anyhow};
 use bplustree::BPlusTreeSet;
 use log::{Level, debug, log_enabled, warn};
 
-pub(crate) fn search_region(
+pub(crate) fn search_region_single(
     target: &SearchValue,
     start: u64,        // 区域起始地址
     end: u64,          // 区域结束地址
@@ -157,8 +159,11 @@ pub(crate) fn search_in_buffer_with_status(
 pub(crate) fn refine_single_search(
     addresses: &[ValuePair],
     target: &SearchValue,
+    processed_counter: Option<&Arc<AtomicUsize>>,
+    total_found_counter: Option<&Arc<AtomicUsize>>,
 ) -> Result<Vec<ValuePair>> {
     use rayon::prelude::*;
+    use std::sync::atomic::Ordering;
 
     if addresses.is_empty() {
         return Ok(Vec::new());
@@ -190,6 +195,11 @@ pub(crate) fn refine_single_search(
         if driver_manager.read_memory_unified(pair.addr, &mut buffer, None).is_ok() {
             address_values.push((pair.clone(), buffer));
         }
+
+        // 更新已处理计数器
+        if let Some(counter) = &processed_counter {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     drop(driver_manager);
@@ -199,6 +209,9 @@ pub(crate) fn refine_single_search(
         .into_par_iter()
         .filter_map(|(pair, bytes)| {
             if let Ok(true) = target.matched(&bytes) {
+                if let Some(counter) = &total_found_counter {
+                    counter.fetch_add(1, Ordering::Relaxed);
+                }
                 Some(pair)
             } else {
                 None

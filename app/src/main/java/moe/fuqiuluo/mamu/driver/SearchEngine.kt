@@ -5,6 +5,7 @@ package moe.fuqiuluo.mamu.driver
 import moe.fuqiuluo.mamu.floating.ext.divideToSimpleMemoryRange
 import moe.fuqiuluo.mamu.floating.model.DisplayValueType
 import moe.fuqiuluo.mamu.floating.model.MemoryRange
+import java.nio.ByteBuffer
 
 object SearchEngine {
     /**
@@ -179,6 +180,32 @@ object SearchEngine {
         return nativeRefineSearch(query, type.nativeId, cb)
     }
 
+    /**
+     * 设置进度缓冲区（使用DirectByteBuffer共享内存）
+     *
+     * 缓冲区结构（20字节）：
+     * [0-3]   当前进度 (0-100)
+     * [4-7]   已搜索区域数
+     * [8-15]  当前找到的结果数
+     * [16-19] 心跳随机数（定期更新，用于检测是否卡死）
+     *
+     * @param buffer DirectByteBuffer，native层会直接写入进度数据
+     * @return 设置是否成功
+     */
+    fun setProgressBuffer(buffer: ByteBuffer): Boolean {
+        if (!buffer.isDirect) {
+            throw IllegalArgumentException("Buffer must be a DirectByteBuffer")
+        }
+        return nativeSetProgressBuffer(buffer)
+    }
+
+    /**
+     * 清除进度缓冲区
+     */
+    fun clearProgressBuffer() {
+        nativeClearProgressBuffer()
+    }
+
     private external fun nativeInitSearchEngine(bufferSize: Long, cacheFileDir: String, chunkSize: Long): Boolean
     private external fun nativeSearch(
         query: String,
@@ -221,4 +248,16 @@ object SearchEngine {
         defaultType: Int,
         cb: SearchProgressCallback
     ): Long
+
+    /**
+     * 设置进度缓冲区（native）
+     * @param buffer DirectByteBuffer
+     * @return 设置是否成功
+     */
+    private external fun nativeSetProgressBuffer(buffer: ByteBuffer): Boolean
+
+    /**
+     * 清除进度缓冲区（native）
+     */
+    private external fun nativeClearProgressBuffer()
 }

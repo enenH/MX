@@ -111,9 +111,12 @@ println("使用 Android SDK: $androidSdkRoot")
 println("使用 Android NDK: $ndkHome")
 
 fun isReleaseBuild(): Boolean {
-    return gradle.startParameter.taskNames.any {
-        it.contains("Release", ignoreCase = true)
+    if (System.getenv("AutoReleaseBuildRust")?.let { it == "1" } ?: false) {
+        return gradle.startParameter.taskNames.any {
+            it.contains("Release", ignoreCase = true)
+        }
     }
+    return true
 }
 
 fun Exec.initAndroidNdkEnv() {

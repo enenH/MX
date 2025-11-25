@@ -23,9 +23,9 @@ jni-macro = { path = "jni-macro/jni-facade" }
 bplustree = { path = "bplustree" }
 memchr = "2.7.6"
 bytemuck = "1.24.0"
+rand = { version = "0.10.0-rc.5", features = ["default"] }
 
 [dev-dependencies]
-rand = "0.9.2"
 memchr = "2.7"
 
 [profile.release]

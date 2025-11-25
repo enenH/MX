@@ -93,7 +93,7 @@
     <string name="success_topmost_changed">最高层级绘制已%s，需重启悬浮窗生效</string>
     <string name="topmost_enabled">启用</string>
     <string name="topmost_disabled">关闭</string>
-    <string name="success_search_complete">搜索完成，找到 %1$d 个结果，耗时 %2$dms</string>
+    <string name="success_search_complete">搜索完成，找到 %1$d 个结果，耗时 %2$s</string>
     <string name="error_search_failed_unknown" translatable="false">搜索结果获取失败</string>
 
     <!-- 错误消息 -->
@@ -232,6 +232,14 @@
     <string name="home_cpu_abi">CPU架构</string>
     <string name="home_supported_abis">支持的ABI</string>
     <string name="home_error_title">错误</string>
+
+    <!-- 搜索进度对话框 -->
+    <string name="searching">搜索中...</string>
+    <string name="progress_zero">0%</string>
+    <string name="count_zero">0</string>
+    <string name="regions_searched">已搜索区域:</string>
+    <string name="address_searched">已搜索地址:</string>
+    <string name="results_found">找到结果:</string>
 
     <!-- 主题名称 -->
     <string name="theme_tech">霓虹科技</string>

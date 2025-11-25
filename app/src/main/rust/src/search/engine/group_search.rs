@@ -1,3 +1,5 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, AtomicUsize};
 use super::super::types::{SearchMode, SearchQuery, SearchValue, ValueType};
 use super::manager::{BPLUS_TREE_ORDER, PAGE_MASK, PAGE_SIZE, ValuePair};
 use crate::core::DRIVER_MANAGER;
@@ -1035,14 +1037,19 @@ fn dfs_unordered(
 /// # 参数
 /// - `existing_results`: 已有的搜索结果集合 (B+树，已按地址排序)
 /// - `query`: 组搜索查询条件
+/// - `processed_counter`: 可选的已处理地址计数器（用于进度追踪）
 ///
 /// # 返回值
 /// 返回满足条件的所有地址的集合
 pub(crate) fn refine_search_group_with_dfs(
     existing_results: &Vec<ValuePair>,
     query: &SearchQuery,
+    processed_counter: Option<&Arc<AtomicUsize>>,
+    total_found_counter: Option<&Arc<AtomicUsize>>,
 ) -> Result<BPlusTreeSet<ValuePair>> {
+    use rayon::prelude::*;
     use std::collections::HashSet;
+    use std::sync::atomic::Ordering;
 
     let driver_manager = DRIVER_MANAGER
         .read()
@@ -1071,13 +1078,22 @@ pub(crate) fn refine_search_group_with_dfs(
     }
 
     // 找所有锚点
-    let mut anchors = Vec::new();
-    for (addr, bytes) in &addr_values {
-        if query.values[0].matched(bytes).unwrap_or(false) {
-            anchors.push(*addr);
-        }
-    }
+    let first_query_target = &query.values[0];
+    let anchors: Vec<u64> = addr_values
+        .par_iter()
+        .filter_map(|(addr, bytes)| {
+            if let Ok(true) = first_query_target.matched(&bytes) {
+                Some(*addr)
+            } else {
+                // 更新已处理计数器
+                if let Some(counter) = &processed_counter {
+                    counter.fetch_add(1, Ordering::Relaxed);
+                }
 
+                None
+            }
+        })
+        .collect();
     if anchors.is_empty() {
         return Ok(refined_results);
     }
@@ -1189,6 +1205,15 @@ pub(crate) fn refine_search_group_with_dfs(
         }
 
         dfs(0, &candidates, query, &mut chosen, &mut used, &mut refined_results)?;
+
+        // 更新已处理计数器
+        if let Some(counter) = &processed_counter {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
+
+        if let Some(counter) = &total_found_counter {
+            counter.store(refined_results.len(), Ordering::Relaxed);
+        }
     }
 
     Ok(refined_results)

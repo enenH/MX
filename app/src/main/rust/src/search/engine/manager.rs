@@ -4,16 +4,19 @@ use super::super::types::{SearchQuery, ValueType};
 use super::filter::SearchFilter;
 use super::group_search;
 use super::single_search;
+use crate::core::globals::TOKIO_RUNTIME;
+use crate::search::result_manager::ExactSearchResultItem;
 use anyhow::{Result, anyhow};
 use bplustree::BPlusTreeSet;
 use lazy_static::lazy_static;
 use log::{Level, error, log_enabled};
 use rayon::prelude::*;
-use std::cmp::Ordering;
+use std::cmp::Ordering as CmpOrdering;
 use std::path::PathBuf;
+use std::sync::atomic::Ordering as AtomicOrdering;
+use std::sync::atomic::{AtomicI64, AtomicUsize};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
-use crate::search::result_manager::ExactSearchResultItem;
 
 /// 地址和值类型对
 /// 用于存储搜索结果中的地址和值类型信息
@@ -25,13 +28,13 @@ pub struct ValuePair {
 }
 
 impl PartialOrd<Self> for ValuePair {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<CmpOrdering> {
         Some(self.addr.cmp(&other.addr))
     }
 }
 
 impl Ord for ValuePair {
-    fn cmp(&self, other: &Self) -> Ordering {
+    fn cmp(&self, other: &Self) -> CmpOrdering {
         self.addr.cmp(&other.addr)
     }
 }
@@ -71,6 +74,64 @@ pub struct SearchEngineManager {
     result_manager: Option<SearchResultManager>,
     chunk_size: usize,
     filter: SearchFilter,
+    progress_buffer: Option<ProgressBuffer>,
+}
+
+/// 进度缓冲区，通过共享内存与Java层通信
+/// 内存布局（20字节）:
+/// [0-3]   当前进度 (0-100)
+/// [4-7]   已搜索区域数
+/// [8-15]  当前找到的结果数
+/// [16-19] 心跳随机数（定期更新，用于检测是否卡死）
+#[derive(Clone, Copy)]
+pub struct ProgressBuffer {
+    ptr: *mut u8,
+    len: usize,
+}
+
+unsafe impl Send for ProgressBuffer {}
+unsafe impl Sync for ProgressBuffer {}
+
+impl ProgressBuffer {
+    pub fn new(ptr: *mut u8, len: usize) -> Self {
+        Self { ptr, len }
+    }
+
+    /// 更新进度
+    pub fn update(&self, progress: i32, regions_searched: i32, total_found: i64) {
+        if self.ptr.is_null() || self.len < 20 {
+            return;
+        }
+
+        unsafe {
+            // 写入当前进度 (0-100)
+            std::ptr::copy_nonoverlapping(&progress as *const i32 as *const u8, self.ptr, 4);
+
+            // 写入已搜索区域数
+            std::ptr::copy_nonoverlapping(&regions_searched as *const i32 as *const u8, self.ptr.add(4), 4);
+
+            // 写入当前找到的结果数
+            std::ptr::copy_nonoverlapping(&total_found as *const i64 as *const u8, self.ptr.add(8), 8);
+        }
+    }
+
+    /// 更新心跳（用于检测是否卡死）
+    pub fn update_heartbeat(&self, heartbeat: i32) {
+        if self.ptr.is_null() || self.len < 20 {
+            return;
+        }
+
+        unsafe {
+            // 写入心跳随机数
+            std::ptr::copy_nonoverlapping(&heartbeat as *const i32 as *const u8, self.ptr.add(16), 4);
+        }
+    }
+
+    /// 重置进度
+    pub fn reset(&mut self) {
+        self.update(0, 0, 0);
+        self.update_heartbeat(0);
+    }
 }
 
 impl SearchEngineManager {
@@ -79,7 +140,18 @@ impl SearchEngineManager {
             result_manager: None,
             chunk_size: 512 * 1024, // Default: 512KB
             filter: SearchFilter::new(),
+            progress_buffer: None,
         }
+    }
+
+    /// 设置进度缓冲区
+    pub fn set_progress_buffer(&mut self, ptr: *mut u8, len: usize) {
+        self.progress_buffer = Some(ProgressBuffer::new(ptr, len));
+    }
+
+    /// 清除进度缓冲区
+    pub fn clear_progress_buffer(&mut self) {
+        self.progress_buffer = None;
     }
 
     pub fn init(&mut self, memory_buffer_size: usize, cache_dir: String, chunk_size: usize) -> Result<()> {
@@ -136,8 +208,44 @@ impl SearchEngineManager {
             use_deep_search
         );
 
+        // 如果有进度buffer，启动进度更新任务
+        let progress_updater = if let Some(ref progress_buffer) = self.progress_buffer {
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(i32, i32, i64)>();
+            let buffer_clone = progress_buffer.clone();
+
+            // 使用全局 tokio runtime 启动异步任务监听进度更新
+            TOKIO_RUNTIME.spawn(async move {
+                let mut heartbeat_interval = tokio::time::interval(tokio::time::Duration::from_millis(1000));
+
+                loop {
+                    tokio::select! {
+                        // 接收进度更新
+                        Some((progress, regions_searched, total_found)) = rx.recv() => {
+                            buffer_clone.update(progress, regions_searched, total_found);
+                        }
+                        // 定期更新心跳
+                        _ = heartbeat_interval.tick() => {
+                            let heartbeat: i32 = rand::random();
+                            buffer_clone.update_heartbeat(heartbeat);
+                        }
+                        // channel 关闭，退出循环
+                        else => break,
+                    }
+                }
+            });
+
+            Some(tx)
+        } else {
+            None
+        };
+
         let chunk_size = self.chunk_size;
         let is_group_search = query.values.len() > 1;
+        let total_regions = regions.len();
+
+        // 用于跟踪进度
+        let completed_regions = Arc::new(AtomicUsize::new(0));
+        let total_found_count = Arc::new(AtomicI64::new(0));
 
         let all_results: Vec<BPlusTreeSet<ValuePair>> = regions
             .par_iter()
@@ -154,16 +262,29 @@ impl SearchEngineManager {
                         group_search::search_region_group(query, *start, *end, chunk_size)
                     }
                 } else {
-                    single_search::search_region(&query.values[0], *start, *end, chunk_size)
+                    single_search::search_region_single(&query.values[0], *start, *end, chunk_size)
                 };
 
-                match result {
+                let region_results = match result {
                     Ok(results) => results,
                     Err(e) => {
                         error!("Failed to search region {}: {:?}", idx, e);
                         BPlusTreeSet::new(BPLUS_TREE_ORDER)
                     },
+                };
+
+                // 更新进度
+                if let Some(ref tx) = progress_updater {
+                    let completed = completed_regions.fetch_add(1, AtomicOrdering::Relaxed) + 1;
+                    let found_in_region = region_results.len() as i64;
+                    let total_found =
+                        total_found_count.fetch_add(found_in_region, AtomicOrdering::Relaxed) + found_in_region;
+                    let progress = ((completed as f64 / total_regions as f64) * 100.0) as i32;
+
+                    let _ = tx.send((progress, completed as i32, total_found));
                 }
+
+                region_results
             })
             .collect();
 
@@ -324,37 +445,123 @@ impl SearchEngineManager {
             total_addresses
         );
 
+        // 如果有进度buffer，启动进度更新任务
+        let progress_updater = if let Some(ref progress_buffer) = self.progress_buffer {
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(i32, i32, i64)>();
+            let buffer_clone = progress_buffer.clone();
+
+            // 使用全局 tokio runtime 启动异步任务监听进度更新
+            TOKIO_RUNTIME.spawn(async move {
+                let mut heartbeat_interval = tokio::time::interval(tokio::time::Duration::from_millis(1000));
+
+                loop {
+                    tokio::select! {
+                        // 接收进度更新
+                        Some((progress, regions_searched, total_found)) = rx.recv() => {
+                            buffer_clone.update(progress, regions_searched, total_found);
+                        }
+                        // 定期更新心跳
+                        _ = heartbeat_interval.tick() => {
+                            let heartbeat: i32 = rand::random();
+                            buffer_clone.update_heartbeat(heartbeat);
+                        }
+                        // channel 关闭，退出循环
+                        else => break,
+                    }
+                }
+            });
+
+            Some(tx)
+        } else {
+            None
+        };
+
+        // 创建原子计数器用于追踪处理进度
+        let processed_counter = Arc::new(AtomicUsize::new(0));
+        let total_found_counter = Arc::new(AtomicUsize::new(0));
+
+        // 启动进度监控任务
+        let progress_monitor = if let Some(ref tx) = progress_updater {
+            let tx_clone = tx.clone();
+            let processed = Arc::clone(&processed_counter);
+            let found = Arc::clone(&total_found_counter);
+            let total = total_addresses;
+
+            Some(TOKIO_RUNTIME.spawn(async move {
+                let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
+
+                loop {
+                    interval.tick().await;
+
+                    let processed_count = processed.load(AtomicOrdering::Relaxed);
+                    let found_count = found.load(AtomicOrdering::Relaxed);
+                    let progress = if total > 0 {
+                        ((processed_count as f64 / total as f64) * 100.0) as i32
+                    } else {
+                        0
+                    };
+
+                    let count = if processed_count > i32::MAX as usize {
+                        i32::MAX
+                    } else {
+                        processed_count as i32
+                    };
+                    let found_count = if found_count > i64::MAX as usize {
+                        i64::MAX
+                    } else {
+                        found_count as i64
+                    };
+                    if tx_clone.send((progress, count, found_count)).is_err() {
+                        break;
+                    }
+
+                    // 如果已完成所有处理，退出监控
+                    if processed_count >= total {
+                        break;
+                    }
+                }
+            }))
+        } else {
+            None
+        };
+
         // Clear current results and prepare for new ones
         result_mgr.clear()?;
         result_mgr.set_mode(SearchResultMode::Exact)?;
 
         // 判断是单值搜索还是组搜索
-        if query.values.len() == 1 {
-            let refined_results = single_search::refine_single_search(
+        let refined_results = if query.values.len() == 1 {
+            single_search::refine_single_search(
                 &current_results,
                 &query.values[0],
-            )?;
-
-            if !refined_results.is_empty() {
-                let converted_results: Vec<SearchResultItem> = refined_results
-                    .into_iter()
-                    .map(|pair| SearchResultItem::new_exact(pair.addr, pair.value_type))
-                    .collect();
-                result_mgr.add_results_batch(converted_results)?;
-            }
+                Some(&processed_counter),
+                Some(&total_found_counter),
+            )?
         } else {
-            let refined_results = group_search::refine_search_group_with_dfs(
+            let results = group_search::refine_search_group_with_dfs(
                 &current_results,
                 query,
+                Some(&processed_counter),
+                Some(&total_found_counter),
             )?;
 
-            if !refined_results.is_empty() {
-                let converted_results: Vec<SearchResultItem> = refined_results
-                    .into_iter()
-                    .map(|pair| SearchResultItem::new_exact(pair.addr, pair.value_type))
-                    .collect();
-                result_mgr.add_results_batch(converted_results)?;
-            }
+            results.into_iter().map(|vp| vp.clone()).collect()
+        };
+
+        // 更新找到的结果计数
+        total_found_counter.store(refined_results.len(), AtomicOrdering::Relaxed);
+
+        // 等待进度监控任务完成
+        if let Some(handle) = progress_monitor {
+            let _ = TOKIO_RUNTIME.block_on(handle);
+        }
+
+        if !refined_results.is_empty() {
+            let converted_results: Vec<SearchResultItem> = refined_results
+                .into_iter()
+                .map(|pair| SearchResultItem::new_exact(pair.addr, pair.value_type))
+                .collect();
+            result_mgr.add_results_batch(converted_results)?;
         }
 
         let elapsed = start_time.elapsed().as_millis() as u64;

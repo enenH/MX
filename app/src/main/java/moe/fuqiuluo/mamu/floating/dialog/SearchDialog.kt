@@ -12,7 +12,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import moe.fuqiuluo.mamu.R
 import moe.fuqiuluo.mamu.databinding.DialogSearchInputBinding
 import moe.fuqiuluo.mamu.driver.SearchEngine
@@ -23,6 +28,7 @@ import moe.fuqiuluo.mamu.floating.ext.keyboardType
 import moe.fuqiuluo.mamu.floating.ext.memoryAccessMode
 import moe.fuqiuluo.mamu.floating.ext.selectedMemoryRanges
 import moe.fuqiuluo.mamu.floating.ext.divideToSimpleMemoryRange
+import moe.fuqiuluo.mamu.floating.ext.formatElapsedTime
 import moe.fuqiuluo.mamu.floating.model.DisplayMemRegionEntry
 import moe.fuqiuluo.mamu.floating.model.DisplayValueType
 import moe.fuqiuluo.mamu.widget.BuiltinKeyboard
@@ -48,6 +54,72 @@ class SearchDialog(
     private val searchScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var searchRanges: List<DisplayMemRegionEntry>
 
+    // 进度相关
+    private var progressDialog: SearchProgressDialog? = null
+    private var progressBuffer: ByteBuffer? = null
+
+    /**
+     * 读取进度buffer中的数据
+     */
+    private fun readProgressData(): SearchProgressData {
+        val buffer = progressBuffer ?: return SearchProgressData(0, 0, 0, 0)
+
+        buffer.position(0)
+        val progress = buffer.int
+        val regionsSearched = buffer.int
+        val totalFound = buffer.long
+        val heartbeat = buffer.int
+
+        return SearchProgressData(progress, regionsSearched, totalFound, heartbeat)
+    }
+
+    /**
+     * 启动进度监控协程
+     */
+    private fun startProgressMonitoring() {
+        searchScope.launch(Dispatchers.Main) {
+            while (isActive) {
+                val data = readProgressData()
+                progressDialog?.updateProgress(data)
+
+                // 每 100ms 更新一次进度
+                delay(100)
+            }
+        }
+    }
+
+    /**
+     * 初始化进度追踪
+     */
+    private fun setupProgressTracking(isRefineSearch: Boolean) {
+        // 创建 20 字节的 DirectByteBuffer
+        progressBuffer = ByteBuffer.allocateDirect(20).apply {
+            order(ByteOrder.nativeOrder())
+        }
+
+        // 设置到 native 层
+        SearchEngine.setProgressBuffer(progressBuffer!!)
+
+        // 显示进度对话框
+        progressDialog = SearchProgressDialog(context, isRefineSearch).apply {
+            show()
+        }
+
+        // 启动进度监控
+        startProgressMonitoring()
+    }
+
+    /**
+     * 清理进度追踪
+     */
+    private fun cleanupProgressTracking() {
+        progressDialog?.dismiss()
+        progressDialog = null
+
+        SearchEngine.clearProgressBuffer()
+        progressBuffer = null
+    }
+
     private inner class SearchCallback : SearchProgressCallback {
         override fun onSearchComplete(
             totalFound: Long,
@@ -55,6 +127,9 @@ class SearchDialog(
             elapsedMillis: Long
         ) {
             searchScope.launch(Dispatchers.Main) {
+                // 清理进度追踪
+                cleanupProgressTracking()
+
                 if (!::searchRanges.isInitialized) {
                     notification.showError(context.getString(R.string.error_search_failed_unknown))
                     return@launch
@@ -63,7 +138,7 @@ class SearchDialog(
                         context.getString(
                             R.string.success_search_complete,
                             totalFound,
-                            elapsedMillis
+                            formatElapsedTime(elapsedMillis)
                         )
                     )
                     onSearchCompleted?.invoke(searchRanges)
@@ -79,11 +154,14 @@ class SearchDialog(
             elapsedMillis: Long
         ) {
             searchScope.launch(Dispatchers.Main) {
+                // 清理进度追踪
+                cleanupProgressTracking()
+
                 notification.showSuccess(
                     context.getString(
                         R.string.success_search_complete,
                         totalFound,
-                        elapsedMillis
+                        formatElapsedTime(elapsedMillis)
                     )
                 )
                 onRefineCompleted?.invoke()
@@ -92,6 +170,7 @@ class SearchDialog(
     }
 
     fun release() {
+        cleanupProgressTracking()
         searchScope.cancel()
     }
 
@@ -283,6 +362,11 @@ class SearchDialog(
             }
 
             searchScope.launch {
+                // 先在主线程初始化进度追踪
+                withContext(Dispatchers.Main) {
+                    setupProgressTracking(false)
+                }
+
                 SearchEngine.clearSearchResults()
                 val ranges = mmkv.selectedMemoryRanges
 
@@ -309,6 +393,10 @@ class SearchDialog(
                     )
                 }.onFailure {
                     Log.e(TAG, "搜索失败", it)
+                    // 搜索失败也要清理进度追踪
+                    withContext(Dispatchers.Main) {
+                        cleanupProgressTracking()
+                    }
                 }
             }
         }
@@ -321,6 +409,11 @@ class SearchDialog(
             }
 
             searchScope.launch {
+                // 先在主线程初始化进度追踪
+                withContext(Dispatchers.Main) {
+                    setupProgressTracking(true)
+                }
+
                 runCatching {
                     // 改善搜索：基于上一次搜索结果进行再次搜索
                     SearchEngine.refineSearch(
@@ -330,6 +423,10 @@ class SearchDialog(
                     )
                 }.onFailure {
                     Log.e(TAG, "改善搜索失败", it)
+                    // 搜索失败也要清理进度追踪
+                    withContext(Dispatchers.Main) {
+                        cleanupProgressTracking()
+                    }
                 }
             }
         }
