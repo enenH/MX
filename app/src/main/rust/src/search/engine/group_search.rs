@@ -165,6 +165,156 @@ pub(crate) fn search_region_group(
     Ok(results)
 }
 
+/// Deep group search for a memory region - finds ALL possible combinations
+/// This is the deep search version of search_region_group
+pub(crate) fn search_region_group_deep(
+    query: &SearchQuery,
+    start: u64,
+    end: u64,
+    per_chunk_size: usize,
+) -> Result<BPlusTreeSet<ValuePair>> {
+    let driver_manager = DRIVER_MANAGER
+        .read()
+        .map_err(|_| anyhow!("Failed to acquire DriverManager lock"))?;
+
+    let mut results = BPlusTreeSet::new(BPLUS_TREE_ORDER);
+    let mut read_success = 0usize;
+    let mut read_failed = 0usize;
+    let mut matches_checked = 0usize;
+
+    let min_element_size = query.values.iter().map(|v| v.value_type().size()).min().unwrap_or(1);
+    let search_range = query.range as usize;
+
+    let mut current = start & *PAGE_MASK as u64;
+    let mut sliding_buffer = vec![0u8; per_chunk_size * 2];
+    let mut is_first_chunk = true;
+    let mut prev_chunk_valid = false;
+
+    while current < end {
+        let chunk_end = (current + per_chunk_size as u64).min(end);
+        let chunk_len = (chunk_end - current) as usize;
+
+        let mut page_status = PageStatusBitmap::new(chunk_len, current as usize);
+
+        let read_result = driver_manager.read_memory_unified(
+            current,
+            &mut sliding_buffer[per_chunk_size..per_chunk_size + chunk_len],
+            Some(&mut page_status)
+        );
+
+        match read_result {
+            Ok(_) => {
+                let success_pages = page_status.success_count();
+                if success_pages > 0 {
+                    read_success += 1;
+
+                    if is_first_chunk {
+                        search_in_buffer_group_deep(
+                            &sliding_buffer[per_chunk_size..per_chunk_size + chunk_len],
+                            current,
+                            start,
+                            chunk_end,
+                            min_element_size,
+                            query,
+                            &page_status,
+                            &mut results,
+                            &mut matches_checked,
+                        );
+                        is_first_chunk = false;
+                    } else if prev_chunk_valid {
+                        let overlap_start_offset = per_chunk_size.saturating_sub(search_range);
+                        let overlap_start_addr = current - search_range as u64;
+                        let overlap_len = search_range + chunk_len;
+
+                        let mut combined_status = PageStatusBitmap::new(overlap_len, overlap_start_addr as usize);
+
+                        let overlap_start_page = (overlap_start_addr as usize) / *PAGE_SIZE;
+                        let overlap_end = overlap_start_addr as usize + search_range;
+                        let overlap_end_page = (overlap_end + *PAGE_SIZE - 1) / *PAGE_SIZE;
+                        let num_overlap_pages = overlap_end_page - overlap_start_page;
+
+                        for i in 0..num_overlap_pages {
+                            combined_status.mark_success(i);
+                        }
+
+                        let page_status_base = (current as usize) & *PAGE_MASK;
+                        let combined_base = (overlap_start_addr as usize) & *PAGE_MASK;
+                        let page_offset = (page_status_base - combined_base) / *PAGE_SIZE;
+
+                        for idx in 0..page_status.num_pages() {
+                            if page_status.is_page_success(idx) {
+                                let combined_page_index = page_offset + idx;
+                                if combined_page_index < combined_status.num_pages() {
+                                    combined_status.mark_success(combined_page_index);
+                                }
+                            }
+                        }
+
+                        search_in_buffer_group_deep(
+                            &sliding_buffer[overlap_start_offset..per_chunk_size + chunk_len],
+                            overlap_start_addr,
+                            start,
+                            chunk_end,
+                            min_element_size,
+                            query,
+                            &combined_status,
+                            &mut results,
+                            &mut matches_checked,
+                        );
+                    } else {
+                        search_in_buffer_group_deep(
+                            &sliding_buffer[per_chunk_size..per_chunk_size + chunk_len],
+                            current,
+                            start,
+                            chunk_end,
+                            min_element_size,
+                            query,
+                            &page_status,
+                            &mut results,
+                            &mut matches_checked,
+                        );
+                    }
+
+                    prev_chunk_valid = true;
+                } else {
+                    read_failed += 1;
+                    prev_chunk_valid = false;
+                }
+            },
+            Err(error) => {
+                if log_enabled!(Level::Debug) {
+                    warn!(
+                        "Failed to read memory at 0x{:X} - 0x{:X}, err: {:?}",
+                        current, chunk_end, error
+                    );
+                }
+                read_failed += 1;
+                prev_chunk_valid = false;
+            },
+        }
+
+        if chunk_end < end {
+            sliding_buffer.copy_within(per_chunk_size..per_chunk_size + chunk_len, 0);
+        }
+
+        current = chunk_end;
+    }
+
+    if log_enabled!(Level::Debug) {
+        let region_size = end - start;
+        debug!(
+            "Deep group search stats: size={}MB, reads={} success + {} failed, matches_checked={}, found={}",
+            region_size / 1024 / 1024,
+            read_success,
+            read_failed,
+            matches_checked,
+            results.len()
+        );
+    }
+
+    Ok(results)
+}
+
 #[inline]
 pub(crate) fn search_in_buffer_group(
     buffer: &[u8],
@@ -529,6 +679,353 @@ pub(crate) fn try_match_unordered(buffer: &[u8], _start_addr: u64, query: &Searc
         None
     }
 }
+
+// ==================== Deep Search (Exhaustive Combination Search) ====================
+
+/// Deep group search - finds ALL possible combinations when there are duplicate values
+///
+/// Unlike standard group search which uses a first-match greedy strategy,
+/// deep search exhaustively finds all valid combinations using DFS backtracking.
+///
+/// # Use Cases
+/// - When memory contains duplicate values and you need all combinations
+/// - Example: Memory [100, 200, 300, 300] with query [100, 200, 300]
+///   - Standard search finds: 3 addresses (first match only)
+///   - Deep search finds: 4 addresses (all combinations)
+///
+/// # Performance
+/// This is slower than standard search due to backtracking algorithm.
+/// Use only when you need to find all combinations.
+pub(crate) fn search_in_buffer_group_deep(
+    buffer: &[u8],
+    buffer_addr: u64,
+    region_start: u64,
+    region_end: u64,
+    min_element_size: usize,
+    query: &SearchQuery,
+    page_status: &PageStatusBitmap,
+    results: &mut BPlusTreeSet<ValuePair>,
+    matches_checked: &mut usize,
+) {
+    match query.mode {
+        SearchMode::Ordered => search_ordered_deep(
+            buffer,
+            buffer_addr,
+            region_start,
+            region_end,
+            min_element_size,
+            query,
+            page_status,
+            results,
+            matches_checked,
+        ),
+        SearchMode::Unordered => search_unordered_deep(
+            buffer,
+            buffer_addr,
+            region_start,
+            region_end,
+            min_element_size,
+            query,
+            page_status,
+            results,
+            matches_checked,
+        ),
+    }
+}
+
+/// Deep search for ordered mode using DFS backtracking
+fn search_ordered_deep(
+    buffer: &[u8],
+    buffer_addr: u64,
+    region_start: u64,
+    region_end: u64,
+    min_element_size: usize,
+    query: &SearchQuery,
+    page_status: &PageStatusBitmap,
+    results: &mut BPlusTreeSet<ValuePair>,
+    matches_checked: &mut usize,
+) {
+    use std::collections::HashSet;
+
+    let buffer_end = buffer_addr + buffer.len() as u64;
+    let search_start = buffer_addr.max(region_start);
+    let search_end = buffer_end.min(region_end);
+
+    // Calculate first aligned address
+    let rem = search_start % min_element_size as u64;
+    let first_addr = if rem == 0 {
+        search_start
+    } else {
+        search_start + min_element_size as u64 - rem
+    };
+
+    // Get successful page ranges
+    let page_ranges = page_status.get_success_page_ranges();
+    if page_ranges.is_empty() {
+        return;
+    }
+
+    let buffer_page_start = buffer_addr & *PAGE_MASK as u64;
+    let search_range = query.range as u64;
+
+    // Iterate through each aligned address as potential starting point
+    for (start_page, end_page) in page_ranges {
+        let page_range_start = buffer_page_start + (start_page * *PAGE_SIZE) as u64;
+        let page_range_end = buffer_page_start + (end_page * *PAGE_SIZE) as u64;
+
+        let range_start = page_range_start.max(buffer_addr);
+        let range_end = page_range_end.min(search_end).min(buffer_end);
+
+        if range_start >= range_end {
+            continue;
+        }
+
+        let mut addr = if range_start <= first_addr {
+            first_addr
+        } else {
+            let rem = range_start % min_element_size as u64;
+            if rem == 0 {
+                range_start
+            } else {
+                range_start + min_element_size as u64 - rem
+            }
+        };
+
+        while addr < range_end {
+            let offset = (addr - buffer_addr) as usize;
+            if offset < buffer.len() {
+                let range_end_check = (addr + search_range).min(buffer_end).min(search_end);
+                let range_size = (range_end_check - addr) as usize;
+
+                if range_size >= query.range as usize && offset + range_size <= buffer.len() {
+                    *matches_checked += 1;
+
+                    // Use DFS to find all combinations
+                    let mut chosen = Vec::with_capacity(query.values.len());
+                    let mut used = HashSet::new();
+
+                    dfs_ordered(
+                        &buffer[offset..offset + range_size],
+                        addr,
+                        0, // Start from first query value
+                        0, // Start searching from offset 0
+                        query,
+                        &mut chosen,
+                        &mut used,
+                        results,
+                    );
+                }
+            }
+            addr += min_element_size as u64;
+        }
+    }
+}
+
+/// DFS backtracking for ordered search
+fn dfs_ordered(
+    buffer: &[u8],
+    base_addr: u64,
+    query_idx: usize,
+    search_offset: usize,
+    query: &SearchQuery,
+    chosen: &mut Vec<(u64, ValueType)>,
+    used: &mut std::collections::HashSet<u64>,
+    results: &mut BPlusTreeSet<ValuePair>,
+) {
+    // Found complete match
+    if query_idx == query.values.len() {
+        for (addr, vt) in chosen.iter() {
+            results.insert(ValuePair::new(*addr, *vt));
+        }
+        return;
+    }
+
+    let target_value = &query.values[query_idx];
+    let value_size = target_value.value_type().size();
+    let alignment = value_size;
+
+    let mut offset = search_offset;
+    while offset + value_size <= buffer.len() {
+        let addr = base_addr + offset as u64;
+
+        // Check if address is already used
+        if used.contains(&addr) {
+            offset += alignment;
+            continue;
+        }
+
+        // Check if value matches
+        let element_bytes = &buffer[offset..offset + value_size];
+        if let Ok(true) = target_value.matched(element_bytes) {
+            // Choose this position
+            chosen.push((addr, target_value.value_type()));
+            used.insert(addr);
+
+            // Recurse to next query value (search from next aligned position)
+            dfs_ordered(
+                buffer,
+                base_addr,
+                query_idx + 1,
+                offset + value_size, // Continue from next position
+                query,
+                chosen,
+                used,
+                results,
+            );
+
+            // Backtrack
+            chosen.pop();
+            used.remove(&addr);
+        }
+
+        offset += alignment;
+    }
+}
+
+/// Deep search for unordered mode using DFS backtracking
+fn search_unordered_deep(
+    buffer: &[u8],
+    buffer_addr: u64,
+    region_start: u64,
+    region_end: u64,
+    min_element_size: usize,
+    query: &SearchQuery,
+    page_status: &PageStatusBitmap,
+    results: &mut BPlusTreeSet<ValuePair>,
+    matches_checked: &mut usize,
+) {
+    use std::collections::HashSet;
+
+    let buffer_end = buffer_addr + buffer.len() as u64;
+    let search_start = buffer_addr.max(region_start);
+    let search_end = buffer_end.min(region_end);
+
+    let rem = search_start % min_element_size as u64;
+    let first_addr = if rem == 0 {
+        search_start
+    } else {
+        search_start + min_element_size as u64 - rem
+    };
+
+    let page_ranges = page_status.get_success_page_ranges();
+    if page_ranges.is_empty() {
+        return;
+    }
+
+    let buffer_page_start = buffer_addr & *PAGE_MASK as u64;
+    let search_range = query.range as u64;
+
+    for (start_page, end_page) in page_ranges {
+        let page_range_start = buffer_page_start + (start_page * *PAGE_SIZE) as u64;
+        let page_range_end = buffer_page_start + (end_page * *PAGE_SIZE) as u64;
+
+        let range_start = page_range_start.max(buffer_addr);
+        let range_end = page_range_end.min(search_end).min(buffer_end);
+
+        if range_start >= range_end {
+            continue;
+        }
+
+        let mut addr = if range_start <= first_addr {
+            first_addr
+        } else {
+            let rem = range_start % min_element_size as u64;
+            if rem == 0 {
+                range_start
+            } else {
+                range_start + min_element_size as u64 - rem
+            }
+        };
+
+        while addr < range_end {
+            let offset = (addr - buffer_addr) as usize;
+            if offset < buffer.len() {
+                let unordered_start = addr.saturating_sub(search_range).max(buffer_addr);
+                let unordered_end = (addr + search_range).min(buffer_end).min(search_end);
+                let start_offset = (unordered_start - buffer_addr) as usize;
+                let range_size = (unordered_end - unordered_start) as usize;
+
+                if range_size >= query.range as usize && start_offset + range_size <= buffer.len() {
+                    *matches_checked += 1;
+
+                    let mut chosen = Vec::with_capacity(query.values.len());
+                    let mut used = HashSet::new();
+
+                    dfs_unordered(
+                        &buffer[start_offset..start_offset + range_size],
+                        unordered_start,
+                        0, // Start from first query value
+                        0, // Start searching from offset 0
+                        query,
+                        &mut chosen,
+                        &mut used,
+                        results,
+                    );
+                }
+            }
+            addr += min_element_size as u64;
+        }
+    }
+}
+
+/// DFS backtracking for unordered search
+fn dfs_unordered(
+    buffer: &[u8],
+    base_addr: u64,
+    query_idx: usize,
+    search_offset: usize,
+    query: &SearchQuery,
+    chosen: &mut Vec<(u64, ValueType)>,
+    used: &mut std::collections::HashSet<u64>,
+    results: &mut BPlusTreeSet<ValuePair>,
+) {
+    // Found complete match
+    if query_idx == query.values.len() {
+        for (addr, vt) in chosen.iter() {
+            results.insert(ValuePair::new(*addr, *vt));
+        }
+        return;
+    }
+
+    let target_value = &query.values[query_idx];
+    let value_size = target_value.value_type().size();
+    let alignment = value_size;
+
+    let mut offset = search_offset;
+    while offset + value_size <= buffer.len() {
+        let addr = base_addr + offset as u64;
+
+        if used.contains(&addr) {
+            offset += alignment;
+            continue;
+        }
+
+        let element_bytes = &buffer[offset..offset + value_size];
+        if let Ok(true) = target_value.matched(element_bytes) {
+            chosen.push((addr, target_value.value_type()));
+            used.insert(addr);
+
+            // For unordered mode, continue searching from next position (not necessarily adjacent)
+            dfs_unordered(
+                buffer,
+                base_addr,
+                query_idx + 1,
+                offset + alignment, // Continue from next aligned position
+                query,
+                chosen,
+                used,
+                results,
+            );
+
+            chosen.pop();
+            used.remove(&addr);
+        }
+
+        offset += alignment;
+    }
+}
+
+// ==================== Refine Search (Result Improvement) ====================
 
 /// 使用 DFS 算法对已有搜索结果进行组搜索改善
 ///

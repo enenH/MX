@@ -106,10 +106,14 @@ impl SearchEngineManager {
     /// 搜索内存，是属于新搜索的，就是会清除之前的搜索结果
     /// 使用 DriverManager 配置的 access_mode 进行内存读取
     /// 这个回调可能功能有点少了
+    ///
+    /// # Parameters
+    /// - `use_deep_search`: 是否使用深度搜索模式（找到所有可能的组合）
     pub fn search_memory(
         &mut self,
         query: &SearchQuery,
         regions: &[(u64, u64)],
+        use_deep_search: bool,
         callback: Option<Arc<dyn SearchProgressCallback>>,
     ) -> Result<usize> {
         let result_mgr = self
@@ -123,12 +127,13 @@ impl SearchEngineManager {
         let start_time = Instant::now();
 
         log::debug!(
-            "Starting search: {} values, mode={:?}, range={}, regions={}, chunk_size={} KB",
+            "Starting search: {} values, mode={:?}, range={}, regions={}, chunk_size={} KB, deep_search={}",
             query.values.len(),
             query.mode,
             query.range,
             regions.len(),
-            self.chunk_size / 1024
+            self.chunk_size / 1024,
+            use_deep_search
         );
 
         let chunk_size = self.chunk_size;
@@ -143,7 +148,11 @@ impl SearchEngineManager {
                 }
 
                 let result = if is_group_search {
-                    group_search::search_region_group(query, *start, *end, chunk_size)
+                    if use_deep_search {
+                        group_search::search_region_group_deep(query, *start, *end, chunk_size)
+                    } else {
+                        group_search::search_region_group(query, *start, *end, chunk_size)
+                    }
                 } else {
                     single_search::search_region(&query.values[0], *start, *end, chunk_size)
                 };
@@ -397,6 +406,33 @@ impl SearchEngineManager {
     #[cfg(test)]
     pub fn try_match_group_at_address(buffer: &[u8], addr: u64, query: &SearchQuery) -> Option<Vec<usize>> {
         group_search::try_match_group_at_address(buffer, addr, query)
+    }
+
+    /// Deep group search - finds ALL possible combinations when there are duplicate values
+    /// Uses DFS backtracking to exhaustively search for all valid combinations
+    #[cfg(test)]
+    pub fn search_in_buffer_group_deep(
+        buffer: &[u8],
+        buffer_addr: u64,
+        region_start: u64,
+        region_end: u64,
+        min_element_size: usize,
+        query: &SearchQuery,
+        page_status: &crate::wuwa::PageStatusBitmap,
+        results: &mut BPlusTreeSet<ValuePair>,
+        matches_checked: &mut usize,
+    ) {
+        group_search::search_in_buffer_group_deep(
+            buffer,
+            buffer_addr,
+            region_start,
+            region_end,
+            min_element_size,
+            query,
+            page_status,
+            results,
+            matches_checked,
+        )
     }
 }
 

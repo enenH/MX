@@ -263,7 +263,7 @@ class SearchDialog(
         }
 
         // 执行搜索的通用函数
-        val preCheck: (String) -> Boolean = preCheck@{ expression ->
+        val preCheck: (String) -> Boolean = preCheck@ { expression ->
             if (expression.isEmpty()) {
                 notification.showError(context.getString(R.string.error_empty_search_value))
                 return@preCheck false
@@ -304,6 +304,7 @@ class SearchDialog(
                         expression,
                         valueType,
                         nativeRegions.toLongArray(),
+                        useDeepSearch = binding.cbIsDeeplySearch.isChecked,
                         SearchCallback()
                     )
                 }.onFailure {

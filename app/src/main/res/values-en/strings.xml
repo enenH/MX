@@ -119,6 +119,7 @@
     <string name="content_desc_menu">Menu item</string>
     <string name="label_value_encrypted">Is this value encrypted</string>
     <string name="label_value_allow_pagefault">Deeply Access（PageFault）</string>
+    <string name="label_deep_search">Deeply Search (Slow)</string>
     <string name="label_value_freeze">Freeze</string>
     <string name="label_search_all_memory">In all memory</string>
     <string name="button_new_search">New Search</string>

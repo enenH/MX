@@ -129,6 +129,7 @@
     <string name="tab_memory_preview">内存预览</string>
     <string name="tab_breakpoints">断点</string>
     <string name="label_value_encrypted">此值是否被加密</string>
+    <string name="label_deep_search">深度搜索 (慢)</string>
     <string name="label_value_allow_pagefault">深度访问（缺页）</string>
     <string name="label_value_freeze">冻结</string>
     <string name="label_search_all_memory">在全部内存中</string>

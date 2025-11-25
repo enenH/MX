@@ -30,6 +30,7 @@ object SearchEngine {
      * @param query 搜索内容
      * @param type 数据类型
      * @param ranges 内存区域集合
+     * @param useDeepSearch 是否使用深度搜索
      * @param cb 搜索进度回调
      * @return 搜索到的结果数量
      */
@@ -37,6 +38,7 @@ object SearchEngine {
         query: String,
         type: DisplayValueType,
         ranges: Set<MemoryRange>,
+        useDeepSearch: Boolean,
         cb: SearchProgressCallback
     ): Long {
         val nativeRegions = mutableListOf<Long>()
@@ -49,7 +51,7 @@ object SearchEngine {
                 nativeRegions.add(it.end)
             }
 
-        return nativeSearch(query, type.nativeId, nativeRegions.toLongArray(), cb)
+        return nativeSearch(query, type.nativeId, nativeRegions.toLongArray(), useDeepSearch, cb)
     }
 
     /**
@@ -57,6 +59,7 @@ object SearchEngine {
      * @param query 搜索内容
      * @param type 数据类型
      * @param regions 内存区域数组，格式为[start1, end1, start2, end2, ...]
+     * @param useDeepSearch 是否使用深度搜索
      * @param cb 搜索进度回调
      * @return 搜索到的结果数量
      */
@@ -64,9 +67,10 @@ object SearchEngine {
         query: String,
         type: DisplayValueType,
         regions: LongArray,
+        useDeepSearch: Boolean,
         cb: SearchProgressCallback
     ): Long {
-        return nativeSearch(query, type.nativeId, regions, cb)
+        return nativeSearch(query, type.nativeId, regions, useDeepSearch, cb)
     }
 
     /**
@@ -180,6 +184,7 @@ object SearchEngine {
         query: String,
         defaultType: Int,
         regions: LongArray,
+        useDeepSearch: Boolean,
         cb: SearchProgressCallback
     ): Long
 

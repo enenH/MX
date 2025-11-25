@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<moe.fuqiuluo.mamu.widget.FixedLinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/root_container"
@@ -7,6 +7,8 @@
     android:layout_height="wrap_content"
     android:background="@drawable/dialog_background"
     android:orientation="horizontal"
+    app:maxHeightPercent="0.85"
+    app:maxWidthPercent="0.9"
     android:padding="16dp">
 
     <LinearLayout
@@ -148,26 +150,12 @@
             android:orientation="horizontal"
             android:padding="8dp">
 
-            <CheckBox
-                android:id="@+id/cb_is_encrypted"
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/cb_is_deeply_search"
+                style="@style/FloatingCheckBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:buttonTint="#FFFFFF"
-                android:gravity="center_vertical"
-                android:text="@string/label_value_encrypted"
-                android:textColor="#FFFFFF"
-                android:visibility="gone"
-                tools:ignore="RtlHardcoded" />
-
-            <CheckBox
-                android:id="@+id/cb_is_deeply_access"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:buttonTint="#FFFFFF"
-                android:gravity="center_vertical"
-                android:text="@string/label_value_allow_pagefault"
-                android:textColor="#FFFFFF"
-                android:visibility="gone"
+                android:text="@string/label_deep_search"
                 tools:ignore="RtlHardcoded" />
 
         </LinearLayout>
@@ -236,4 +224,4 @@
 
     </LinearLayout>
 
-</LinearLayout>
+</moe.fuqiuluo.mamu.widget.FixedLinearLayout>

@@ -148,22 +148,13 @@
             android:padding="@dimen/floating_spacing_sm">
 
             <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/cb_is_encrypted"
+                android:id="@+id/cb_is_deeply_search"
                 style="@style/FloatingCheckBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/label_value_encrypted"
-                android:visibility="gone"
+                android:text="@string/label_deep_search"
                 tools:ignore="RtlHardcoded" />
 
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/cb_is_deeply_access"
-                style="@style/FloatingCheckBox"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/label_value_allow_pagefault"
-                tools:ignore="RtlHardcoded"
-                tools:visibility="gone" />
         </LinearLayout>
 
         <!-- 搜索全部内存按钮 -->

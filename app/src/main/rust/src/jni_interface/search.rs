@@ -135,13 +135,14 @@ pub fn jni_init_search_engine(
     .or_throw(&mut env)
 }
 
-#[jni_method(70, "moe/fuqiuluo/mamu/driver/SearchEngine", "nativeSearch", "(Ljava/lang/String;I[JLmoe/fuqiuluo/mamu/driver/SearchProgressCallback;)J")]
+#[jni_method(70, "moe/fuqiuluo/mamu/driver/SearchEngine", "nativeSearch", "(Ljava/lang/String;I[JZLmoe/fuqiuluo/mamu/driver/SearchProgressCallback;)J")]
 pub fn jni_search(
     mut env: JNIEnv,
     _class: JObject,
     query_str: JString,
     default_type: jint,
     regions: JLongArray,
+    use_deep_search: jboolean,
     callback_obj: JObject,
 ) -> jlong {
     (|| -> JniResult<jlong> {
@@ -180,7 +181,12 @@ pub fn jni_search(
             .write()
             .map_err(|_| anyhow!("Failed to acquire SearchEngineManager write lock"))?;
 
-        let count = manager.search_memory(&search_query, &memory_regions, callback)?;
+        let count = manager.search_memory(
+            &search_query,
+            &memory_regions,
+            use_deep_search != JNI_FALSE,
+            callback
+        )?;
 
         Ok(count as jlong)
     })()
