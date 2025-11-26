@@ -54,7 +54,7 @@ class SettingsController(
     private val packageManager: PackageManager,
     private val onUpdateTopIcon: (DisplayProcessInfo?) -> Unit,
     private val onUpdateSearchProcessDisplay: (DisplayProcessInfo?) -> Unit,
-    private val onClearSearchResults: () -> Unit,
+    private val onBoundProcessChanged: () -> Unit,
     private val onUpdateMemoryRangeSummary: () -> Unit,
     private val onApplyOpacity: () -> Unit,
     private val processDeathCallback: ProcessDeathMonitor.Callback
@@ -285,7 +285,8 @@ class SettingsController(
 
     @SuppressLint("SetTextI18n")
     fun updateCurrentProcessDisplay(process: DisplayProcessInfo?) {
-        onClearSearchResults()
+        onBoundProcessChanged()
+
         process?.let { process ->
             binding.currentProcessName.text = "${process.name} (PID: ${process.pid})"
             onUpdateTopIcon(process)

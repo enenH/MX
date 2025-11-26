@@ -102,6 +102,7 @@
     <style name="FloatingButton.MaterialIcon.Tab">
         <item name="android:layout_width">@dimen/floating_touch_target</item>
         <item name="android:layout_height">match_parent</item>
+        <item name="iconSize">@dimen/floating_icon_tab</item>
     </style>
 
     <!-- Material图标按钮 - 工具栏关闭按钮 -->

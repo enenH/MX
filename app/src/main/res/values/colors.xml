@@ -11,4 +11,5 @@
     <!-- 原有的主题色 -->
     <color name="primary_light_blue">#BBDEFB</color>
     <color name="dark_gray">#4D4D4D</color>
+    <color name="white">#FFFFFF</color>
 </resources>

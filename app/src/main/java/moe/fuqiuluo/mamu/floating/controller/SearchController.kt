@@ -32,6 +32,7 @@ class SearchController(
     binding: FloatingSearchLayoutBinding,
     notification: NotificationOverlay,
     private val onShowSearchDialog: () -> Unit,
+    private val onSaveSelectedAddresses: ((List<SearchResultItem>) -> Unit)? = null,
     private val onExitFullscreen: (() -> Unit)? = null
 ) : FloatingController<FloatingSearchLayoutBinding>(context, binding, notification) {
     // 搜索结果列表适配器
@@ -80,6 +81,7 @@ class SearchController(
                 icon = R.drawable.icon_save_24px,
                 label = "保存所选"
             ) {
+                saveSelectedAddresses()
             },
             ToolbarAction(
                 id = 3,
@@ -519,6 +521,20 @@ class SearchController(
             showEmptyState(true)
             updateSearchResultCount(0, null) // 清空结果
         }
+    }
+
+    fun getRanges(): List<DisplayMemRegionEntry>? {
+        return searchResultAdapter.getRanges()
+    }
+
+    private fun saveSelectedAddresses() {
+        val selectedItems = searchResultAdapter.getSelectedItems()
+        if (selectedItems.isEmpty()) {
+            notification.showWarning("未选择任何项目")
+            return
+        }
+
+        onSaveSelectedAddresses?.invoke(selectedItems)
     }
 
     private fun showModifyValueDialog(result: SearchResultItem) {

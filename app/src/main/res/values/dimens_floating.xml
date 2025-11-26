@@ -23,6 +23,7 @@
     <!-- 图标尺寸 (Icon Sizes) -->
     <dimen name="floating_icon_sm">16dp</dimen>
     <dimen name="floating_icon_md">24dp</dimen>
+    <dimen name="floating_icon_tab">26dp</dimen>
     <dimen name="floating_icon_lg">32dp</dimen>
     <dimen name="floating_icon_xl">40dp</dimen>
     <dimen name="floating_icon_xxl">64dp</dimen>

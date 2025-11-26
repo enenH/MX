@@ -1,5 +1,6 @@
 package moe.fuqiuluo.mamu.floating.model
 
+import androidx.annotation.ColorInt
 import androidx.core.graphics.toColorInt
 
 /**
@@ -8,6 +9,7 @@ import androidx.core.graphics.toColorInt
 enum class MemoryRange(
     val code: String,
     val displayName: String,
+    @field:ColorInt
     val color: Int,
     val dangerous: Boolean = false,
     val slow: Boolean = false,

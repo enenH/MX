@@ -27,8 +27,11 @@ import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import com.tencent.mmkv.MMKV
 import moe.fuqiuluo.mamu.R
+import moe.fuqiuluo.mamu.data.model.SavedAddress
 import moe.fuqiuluo.mamu.databinding.FloatingFullscreenLayoutBinding
 import moe.fuqiuluo.mamu.databinding.FloatingWindowLayoutBinding
+import moe.fuqiuluo.mamu.driver.ExactSearchResultItem
+import moe.fuqiuluo.mamu.driver.FuzzySearchResultItem
 import moe.fuqiuluo.mamu.driver.ProcessDeathMonitor
 import moe.fuqiuluo.mamu.driver.WuwaDriver
 import moe.fuqiuluo.mamu.floating.FloatingWindowStateManager
@@ -258,6 +261,13 @@ class FloatingWindowService : Service(), ProcessDeathMonitor.Callback {
     }
 
     private fun initializeControllers() {
+        // 先初始化 savedAddressController，因为 searchController 需要引用它
+        savedAddressController = SavedAddressController(
+            context = this,
+            binding = fullscreenBinding.contentSavedAddresses,
+            notification = notification
+        )
+
         searchController = SearchController(
             context = this,
             binding = fullscreenBinding.contentSearch,
@@ -265,6 +275,46 @@ class FloatingWindowService : Service(), ProcessDeathMonitor.Callback {
             onShowSearchDialog = {
                 val clipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
                 searchController.showSearchDialog(clipboardManager)
+            },
+            onSaveSelectedAddresses = { selectedItems ->
+                // 将搜索结果转换为 SavedAddress 并保存
+                val ranges = searchController.getRanges()
+                val savedAddresses = selectedItems.mapNotNull { item ->
+                    when (item) {
+                        is ExactSearchResultItem -> {
+                            // 查找对应的内存范围
+                            val range = ranges?.find { range ->
+                                item.address >= range.start && item.address < range.end
+                            }?.range ?: return@mapNotNull null
+
+                            SavedAddress(
+                                address = item.address,
+                                name = "Var #${String.format("%X", item.address)}",
+                                valueType = item.valueType,
+                                value = item.value,
+                                isFrozen = false,
+                                range = range
+                            )
+                        }
+                        is FuzzySearchResultItem -> {
+                            // 查找对应的内存范围
+                            val range = ranges?.find { range ->
+                                item.address >= range.start && item.address < range.end
+                            }?.range ?: return@mapNotNull null
+
+                            SavedAddress(
+                                address = item.address,
+                                name = "Var #${String.format("%X", item.address)}",
+                                valueType = item.valueType,
+                                value = item.value,
+                                isFrozen = false,
+                                range = range
+                            )
+                        }
+                        else -> null
+                    }
+                }
+                savedAddressController.saveAddresses(savedAddresses)
             },
             onExitFullscreen = {
                 // 退出全屏：隐藏搜索进度对话框但保持搜索状态
@@ -278,17 +328,18 @@ class FloatingWindowService : Service(), ProcessDeathMonitor.Callback {
             notification = notification,
             packageManager = packageManager,
             onUpdateTopIcon = ::updateTopIcon,
-            onUpdateSearchProcessDisplay = searchController::updateSearchProcessDisplay,
-            onClearSearchResults = searchController::clearSearchResults,
+            onUpdateSearchProcessDisplay = {
+                searchController.updateSearchProcessDisplay(it)
+                savedAddressController.updateProcessDisplay(it)
+            },
             onUpdateMemoryRangeSummary = ::updateBottomInfoBar,
             onApplyOpacity = { fullscreenBinding.applyOpacity() },
-            processDeathCallback = this
-        )
-
-        savedAddressController = SavedAddressController(
-            context = this,
-            binding = fullscreenBinding.contentSavedAddresses,
-            notification = notification
+            processDeathCallback = this,
+            onBoundProcessChanged = {
+                // 绑定的进程改变，无效化
+                searchController.clearSearchResults()
+                savedAddressController.clearAll()
+            }
         )
 
         memoryPreviewController = MemoryPreviewController(
