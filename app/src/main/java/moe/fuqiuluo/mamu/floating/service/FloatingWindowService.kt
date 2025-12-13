@@ -21,7 +21,6 @@ import android.view.*
 import androidx.appcompat.view.ContextThemeWrapper
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.AlphaAnimation
-import android.view.animation.Animation
 import android.widget.*
 import androidx.core.view.isVisible
 import com.tencent.mmkv.MMKV
@@ -306,6 +305,9 @@ class FloatingWindowService : Service(), ProcessDeathMonitor.Callback {
             binding = fullscreenBinding.contentSavedAddresses,
             notification = notification
         )
+
+        // 设置 badge view
+        savedAddressController.setAddressCountBadgeView(fullscreenBinding.badgeSavedAddresses)
 
         searchController = SearchController(
             context = this,

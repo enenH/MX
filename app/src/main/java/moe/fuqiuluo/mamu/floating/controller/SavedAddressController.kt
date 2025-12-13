@@ -3,6 +3,7 @@ package moe.fuqiuluo.mamu.floating.controller
 import android.annotation.SuppressLint
 import android.content.Context
 import android.view.View
+import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import kotlinx.coroutines.*
 import moe.fuqiuluo.mamu.R
@@ -20,6 +21,9 @@ class SavedAddressController(
 ) : FloatingController<FloatingSavedAddressesLayoutBinding>(context, binding, notification) {
     // 保存的地址列表（内存中）
     private val savedAddresses = mutableListOf<SavedAddress>()
+
+    // 地址数量
+    private var addressCountBadgeView: TextView? = null
 
     // 列表适配器
     private val adapter: SavedAddressAdapter = SavedAddressAdapter(
@@ -47,6 +51,24 @@ class SavedAddressController(
         setupRefreshButton()
         updateProcessDisplay(null)
         updateEmptyState()
+        updateAddressCountBadge()
+    }
+
+    fun setAddressCountBadgeView(badge: TextView) {
+        addressCountBadgeView = badge
+        updateAddressCountBadge()
+    }
+
+    private fun updateAddressCountBadge() {
+        addressCountBadgeView?.let { badge ->
+            val count = savedAddresses.size
+            if (count > 0) {
+                badge.text = if (count > 99) "99+" else count.toString()
+                badge.visibility = View.VISIBLE
+            } else {
+                badge.visibility = View.GONE
+            }
+        }
     }
 
     private fun setupToolbar() {
@@ -93,6 +115,7 @@ class SavedAddressController(
             adapter.addAddress(address)
         }
         updateEmptyState()
+        updateAddressCountBadge()
     }
 
     /**
@@ -113,6 +136,7 @@ class SavedAddressController(
         }
         adapter.setAddresses(savedAddresses)
         updateEmptyState()
+        updateAddressCountBadge()
 
         notification.showSuccess("已保存 ${addresses.size} 个地址")
     }
@@ -124,6 +148,7 @@ class SavedAddressController(
         savedAddresses.removeIf { it.address == address }
         adapter.setAddresses(savedAddresses)
         updateEmptyState()
+        updateAddressCountBadge()
         notification.showSuccess("已删除")
     }
 
@@ -134,6 +159,7 @@ class SavedAddressController(
         savedAddresses.clear()
         adapter.setAddresses(emptyList())
         updateEmptyState()
+        updateAddressCountBadge()
     }
 
     /**

@@ -116,6 +116,30 @@
                             android:contentDescription="@string/tab_saved_addresses"
                             app:icon="@drawable/icon_save_24px" />
 
+                        <!-- Badge for saved address count -->
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/badge_saved_addresses"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="top|end"
+                            android:layout_marginTop="4dp"
+                            android:layout_marginEnd="4dp"
+                            android:background="@drawable/badge_background"
+                            android:minWidth="16dp"
+                            android:minHeight="16dp"
+                            android:gravity="center"
+                            android:paddingStart="4dp"
+                            android:paddingEnd="4dp"
+                            android:paddingTop="2dp"
+                            android:paddingBottom="2dp"
+                            android:textColor="@android:color/white"
+                            android:textSize="10sp"
+                            android:textStyle="bold"
+                            android:visibility="gone"
+                            tools:text="99"
+                            tools:visibility="visible"
+                            tools:ignore="SmallSp" />
+
                         <View
                             android:id="@+id/indicator_saved_addresses"
                             android:layout_width="match_parent"

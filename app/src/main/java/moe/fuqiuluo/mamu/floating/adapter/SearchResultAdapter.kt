@@ -25,12 +25,61 @@ class SearchResultAdapter(
 ) : RecyclerView.Adapter<SearchResultAdapter.ViewHolder>() {
     // 搜索结果列表
     private val results = mutableListOf<SearchResultItem>()
-    // 选中位置集合
-    private val selectedPositions = mutableSetOf<Int>()
+
+    // 使用标志位 + 例外集合，避免全选/反选时 O(n) 的集合操作
+    // isAllSelected=true 时: 所有位置默认选中，deselectedPositions 存储取消选择的位置
+    // isAllSelected=false 时: 所有位置默认不选中，selectedPositions 存储选中的位置
+    private var isAllSelected = false
+    private val selectedPositions = mutableSetOf<Int>()    // isAllSelected=false 时使用
+    private val deselectedPositions = mutableSetOf<Int>()  // isAllSelected=true 时使用
+
     // 内存范围列表 (保存主要是为了显示内存范围简称和颜色)
     private var ranges: List<DisplayMemRegionEntry>? = null
     // 预排序的范围列表，用于二分查找 (按 start 地址排序)
     private var sortedRanges: List<DisplayMemRegionEntry>? = null
+
+    /**
+     * 检查某个位置是否被选中 - O(1) 操作
+     */
+    private fun isPositionSelected(position: Int): Boolean {
+        return if (isAllSelected) {
+            position !in deselectedPositions
+        } else {
+            position in selectedPositions
+        }
+    }
+
+    /**
+     * 获取当前选中数量 - O(1) 操作
+     */
+    private fun getSelectedCount(): Int {
+        return if (isAllSelected) {
+            results.size - deselectedPositions.size
+        } else {
+            selectedPositions.size
+        }
+    }
+
+    /**
+     * 切换某个位置的选中状态
+     */
+    private fun toggleSelection(position: Int, selected: Boolean) {
+        if (isAllSelected) {
+            // 全选模式下，操作 deselectedPositions
+            if (selected) {
+                deselectedPositions.remove(position)
+            } else {
+                deselectedPositions.add(position)
+            }
+        } else {
+            // 非全选模式下，操作 selectedPositions
+            if (selected) {
+                selectedPositions.add(position)
+            } else {
+                selectedPositions.remove(position)
+            }
+        }
+    }
 
     init {
         // 启用稳定ID，提升RecyclerView刷新性能
@@ -44,10 +93,12 @@ class SearchResultAdapter(
     fun setResults(newResults: List<SearchResultItem>) {
         val oldSize = results.size
         results.clear()
+        // 重置选择状态
+        isAllSelected = false
         selectedPositions.clear()
+        deselectedPositions.clear()
 
         if (oldSize > 0) {
-            // 执行一个带动画的移除动画？有没有必要呢？
             notifyItemRangeRemoved(0, oldSize)
         }
 
@@ -56,7 +107,7 @@ class SearchResultAdapter(
             notifyItemRangeInserted(0, newResults.size)
         }
 
-        onSelectionChanged(0) // 通知选中状态变化
+        onSelectionChanged(0)
     }
 
     /**
@@ -95,7 +146,16 @@ class SearchResultAdapter(
      * @return 选中项的原生地址数组
      */
     fun getNativePositions(): LongArray {
-        return selectedPositions.map { results[it].nativePosition }.toLongArray()
+        return if (isAllSelected) {
+            // 全选模式：返回所有未取消选择的位置
+            results.indices
+                .filter { it !in deselectedPositions }
+                .map { results[it].nativePosition }
+                .toLongArray()
+        } else {
+            // 手动选择模式：返回选中的位置
+            selectedPositions.map { results[it].nativePosition }.toLongArray()
+        }
     }
 
     /**
@@ -168,7 +228,9 @@ class SearchResultAdapter(
     fun clearResults() {
         val oldSize = results.size
         results.clear()
+        isAllSelected = false
         selectedPositions.clear()
+        deselectedPositions.clear()
         if (oldSize > 0) {
             notifyItemRangeRemoved(0, oldSize)
         }
@@ -180,7 +242,13 @@ class SearchResultAdapter(
      * @return 选中项列表
      */
     fun getSelectedItems(): List<SearchResultItem> {
-        return selectedPositions.map { results[it] }
+        return if (isAllSelected) {
+            results.indices
+                .filter { it !in deselectedPositions }
+                .map { results[it] }
+        } else {
+            selectedPositions.map { results[it] }
+        }
     }
 
     /**
@@ -188,63 +256,66 @@ class SearchResultAdapter(
      * @return 选中位置集合
      */
     fun getSelectedPositions(): Set<Int> {
-        return selectedPositions.toSet()
+        return if (isAllSelected) {
+            results.indices.filter { it !in deselectedPositions }.toSet()
+        } else {
+            selectedPositions.toSet()
+        }
     }
 
     /**
-     * 全选 - 使用 payload 只更新选择状态，避免完全重绑定导致的闪烁
+     * 全选 - O(1) 操作，只设置标志位
      */
     fun selectAll() {
-        if (selectedPositions.size == results.size) {
+        if (isAllSelected && deselectedPositions.isEmpty()) {
             // 已经全选，无需操作
             return
         }
 
+        // O(1) 操作：只设置标志位并清空例外集合
+        isAllSelected = true
         selectedPositions.clear()
-        selectedPositions.addAll(results.indices)
+        deselectedPositions.clear()
 
-        // 使用 payload 机制：只触发 onBindViewHolder 的 payload 分支
-        // 这样只更新 checkbox 状态，不重新绑定其他内容，避免闪烁
+        // 通知可见项更新（RecyclerView只会更新可见的ViewHolder）
         notifyItemRangeChanged(0, results.size, PAYLOAD_SELECTION_CHANGED)
-        onSelectionChanged(selectedPositions.size)
+        onSelectionChanged(results.size)
     }
 
     /**
-     * 全不选 - 使用 payload 只更新选择状态，避免完全重绑定导致的闪烁
+     * 全不选 - O(1) 操作，只设置标志位
      */
     fun deselectAll() {
-        if (selectedPositions.isEmpty()) {
+        if (!isAllSelected && selectedPositions.isEmpty()) {
             // 已经是全不选状态，直接返回
             return
         }
 
+        // O(1) 操作：只设置标志位并清空例外集合
+        isAllSelected = false
         selectedPositions.clear()
-        // 使用 payload 机制，只更新选择状态
+        deselectedPositions.clear()
+
         notifyItemRangeChanged(0, results.size, PAYLOAD_SELECTION_CHANGED)
         onSelectionChanged(0)
     }
 
     /**
-     * 反选 - 使用 payload 只更新选择状态，避免完全重绑定导致的闪烁
+     * 反选 - O(1) 操作，只切换标志位并交换集合
      */
     fun invertSelection() {
-        val totalSize = results.size
+        // O(1) 操作：切换全选标志位，交换两个集合的角色
+        isAllSelected = !isAllSelected
 
-        // 避免创建 (0 until totalSize).toSet() 这样的大集合
-        // 遍历所有索引，在集合中的删除，不在的添加
-        val newSelection = hashSetOf<Int>()
-        for (i in 0 until totalSize) {
-            if (i !in selectedPositions) {
-                newSelection.add(i)
-            }
-        }
-
+        // 交换 selectedPositions 和 deselectedPositions
+        val temp = selectedPositions.toMutableSet()
         selectedPositions.clear()
-        selectedPositions.addAll(newSelection)
+        selectedPositions.addAll(deselectedPositions)
+        deselectedPositions.clear()
+        deselectedPositions.addAll(temp)
 
-        // 使用 payload 机制，只更新选择状态
-        notifyItemRangeChanged(0, totalSize, PAYLOAD_SELECTION_CHANGED)
-        onSelectionChanged(selectedPositions.size)
+        notifyItemRangeChanged(0, results.size, PAYLOAD_SELECTION_CHANGED)
+        onSelectionChanged(getSelectedCount())
     }
 
     companion object {
@@ -366,16 +437,16 @@ class SearchResultAdapter(
                 }
             }
 
-            // Checkbox选中状态
-            val isSelected = position in selectedPositions
+            // Checkbox选中状态 - 使用 isPositionSelected() 支持全选标志位
+            val isSelected = isPositionSelected(position)
             binding.checkbox.apply {
                 setOnCheckedChangeListener(null) // 先移除监听器避免触发
                 isChecked = isSelected
                 setOnCheckedChangeListener { _, isChecked ->
                     bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }?.let { pos ->
-                        if (isChecked) selectedPositions.add(pos) else selectedPositions.remove(pos)
+                        toggleSelection(pos, isChecked)
                         updateItemBackground(isChecked)
-                        onSelectionChanged(selectedPositions.size)
+                        onSelectionChanged(getSelectedCount())
                     }
                 }
             }
@@ -404,16 +475,16 @@ class SearchResultAdapter(
         }
 
         fun updateSelection(position: Int) {
-            val isSelected = position in selectedPositions
+            val isSelected = isPositionSelected(position)
             binding.checkbox.apply {
                 setOnCheckedChangeListener(null)
                 isChecked = isSelected
                 updateItemBackground(isSelected)
                 setOnCheckedChangeListener { _, isChecked ->
                     bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }?.let { pos ->
-                        if (isChecked) selectedPositions.add(pos) else selectedPositions.remove(pos)
+                        toggleSelection(pos, isChecked)
                         updateItemBackground(isChecked)
-                        onSelectionChanged(selectedPositions.size)
+                        onSelectionChanged(getSelectedCount())
                     }
                 }
             }
