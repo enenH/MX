@@ -31,7 +31,6 @@ import moe.fuqiuluo.mamu.ui.theme.MXTheme
 import moe.fuqiuluo.mamu.ui.tutorial.TutorialManager
 import moe.fuqiuluo.mamu.viewmodel.MainViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: MainViewModel = viewModel(),
@@ -65,41 +64,10 @@ fun HomeScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Mamu") },
-                actions = {
-                    IconButton(onClick = { viewModel.loadData() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "刷新")
-                    }
-                }
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { toggleFloatingWindow(context, uiState.isFloatingWindowActive) }
-            ) {
-                Icon(
-                    imageVector = if (uiState.isFloatingWindowActive) {
-                        Icons.Default.Close
-                    } else {
-                        Icons.Default.Window
-                    },
-                    contentDescription = if (uiState.isFloatingWindowActive) {
-                        "关闭悬浮窗"
-                    } else {
-                        "启动悬浮窗"
-                    }
-                )
-            }
-        }
-    ) { paddingValues ->
+    Box(modifier = Modifier.fillMaxSize()) {
         if (uiState.isLoading) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
+                modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator()
@@ -108,7 +76,6 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -157,6 +124,27 @@ fun HomeScreen(
                     }
                 }
             }
+        }
+
+        // 悬浮操作按钮
+        FloatingActionButton(
+            onClick = { toggleFloatingWindow(context, uiState.isFloatingWindowActive) },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp)
+        ) {
+            Icon(
+                imageVector = if (uiState.isFloatingWindowActive) {
+                    Icons.Default.Close
+                } else {
+                    Icons.Default.Window
+                },
+                contentDescription = if (uiState.isFloatingWindowActive) {
+                    "关闭悬浮窗"
+                } else {
+                    "启动悬浮窗"
+                }
+            )
         }
     }
 }
