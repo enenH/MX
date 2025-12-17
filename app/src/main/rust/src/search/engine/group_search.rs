@@ -1051,6 +1051,10 @@ pub(crate) fn refine_search_group_with_dfs(
     use std::collections::HashSet;
     use std::sync::atomic::Ordering;
 
+    if log_enabled!(Level::Debug) {
+        debug!("当前结果数量: {}", existing_results.len())
+    }
+
     let driver_manager = DRIVER_MANAGER
         .read()
         .map_err(|_| anyhow!("Failed to acquire DriverManager lock"))?;
@@ -1070,11 +1074,26 @@ pub(crate) fn refine_search_group_with_dfs(
 
         if driver_manager.read_memory_unified(addr, &mut buffer, None).is_ok() {
             addr_values.push((addr, buffer));
+        } else {
+            // 读取失败也要更新计数器
+            if let Some(counter) = processed_counter {
+                counter.fetch_add(1, Ordering::Relaxed);
+            }
+            if log_enabled!(Level::Debug) {
+                warn!("读取内存失败在改善搜索的时候, addr: {:x}, size = {}", addr, value_size)
+            }
         }
     }
 
     if addr_values.is_empty() {
+        if log_enabled!(Level::Debug) {
+            debug!("当前结果数量: {}, 但是都读取失败了", existing_results.len())
+        }
         return Ok(refined_results);
+    }
+
+    if log_enabled!(Level::Debug) {
+        debug!("结果数量: {}, 可读地址数: {}", existing_results.len(), addr_values.len());
     }
 
     // 找所有锚点
@@ -1083,9 +1102,9 @@ pub(crate) fn refine_search_group_with_dfs(
         .par_iter()
         .filter_map(|(addr, bytes)| {
             if let Ok(true) = first_query_target.matched(&bytes) {
-                Some(*addr)
+                Some(*addr) // 是锚点，不更新计数器
             } else {
-                // 更新已处理计数器
+                // 更新已处理计数器 (非锚点更新)
                 if let Some(counter) = &processed_counter {
                     counter.fetch_add(1, Ordering::Relaxed);
                 }
@@ -1094,6 +1113,11 @@ pub(crate) fn refine_search_group_with_dfs(
             }
         })
         .collect();
+
+    if log_enabled!(Level::Debug) {
+        debug!("锚点数量: {}, 可读地址数: {}", anchors.len(), addr_values.len());
+    }
+
     if anchors.is_empty() {
         return Ok(refined_results);
     }
@@ -1127,6 +1151,9 @@ pub(crate) fn refine_search_group_with_dfs(
 
         // 剪枝：如果候选数量 < (query.values.len() - 1) 不可能成功
         if candidates.len() < query.values.len() - 1 {
+            if let Some(counter) = &processed_counter {
+                counter.fetch_add(1, Ordering::Relaxed); // 锚点被放弃，更新计数器
+            }
             continue;
         }
 
@@ -1208,7 +1235,10 @@ pub(crate) fn refine_search_group_with_dfs(
 
         // 更新已处理计数器
         if let Some(counter) = &processed_counter {
-            counter.fetch_add(1, Ordering::Relaxed);
+            let cur = counter.fetch_add(1, Ordering::Relaxed);
+            if log_enabled!(Level::Debug) {
+                debug!("DFS结束 已处理地址数: {}", cur);
+            }
         }
 
         if let Some(counter) = &total_found_counter {

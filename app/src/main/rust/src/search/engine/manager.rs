@@ -9,7 +9,7 @@ use crate::search::result_manager::ExactSearchResultItem;
 use anyhow::{Result, anyhow};
 use bplustree::BPlusTreeSet;
 use lazy_static::lazy_static;
-use log::{Level, error, log_enabled};
+use log::{Level, error, log_enabled, debug};
 use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
 use std::path::PathBuf;
@@ -494,6 +494,11 @@ impl SearchEngineManager {
                     interval.tick().await;
 
                     let processed_count = processed.load(AtomicOrdering::Relaxed);
+
+                    if log_enabled!(Level::Debug) {
+                        debug!("已处理地址数量: {}", processed_count);
+                    }
+
                     let found_count = found.load(AtomicOrdering::Relaxed);
                     let progress = if total > 0 {
                         ((processed_count as f64 / total as f64) * 100.0) as i32

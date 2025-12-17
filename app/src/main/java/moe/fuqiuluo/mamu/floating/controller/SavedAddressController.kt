@@ -6,6 +6,7 @@ import android.content.Context
 import android.view.View
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.SimpleItemAnimator
 import kotlinx.coroutines.*
 import moe.fuqiuluo.mamu.R
 import moe.fuqiuluo.mamu.floating.data.model.SavedAddress
@@ -193,7 +194,11 @@ class SavedAddressController(
         binding.savedAddressesRecyclerView.apply {
             layoutManager = LinearLayoutManager(context)
             adapter = this@SavedAddressController.adapter
+
             setHasFixedSize(true)
+            if (itemAnimator != null && itemAnimator is SimpleItemAnimator) {
+                (itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
+            }
         }
     }
 
