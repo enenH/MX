@@ -364,6 +364,11 @@ class FloatingWindowService : Service(), ProcessDeathMonitor.Callback {
             }
         )
 
+        // 设置保存地址控制器的搜索结果更新回调
+        savedAddressController.onSearchResultsUpdated = { totalCount, ranges ->
+            searchController.onResultsFromSavedAddresses(totalCount, ranges)
+        }
+
         settingsController = SettingsController(
             context = this,
             binding = fullscreenBinding.contentSettings,

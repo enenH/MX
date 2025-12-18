@@ -736,6 +736,24 @@ impl SearchEngineManager {
         result_mgr.keep_only_results(keep_indices)
     }
 
+    pub fn set_result_mode(&mut self, mode: SearchResultMode) -> Result<()> {
+        let result_mgr = self
+            .result_manager
+            .as_mut()
+            .ok_or_else(|| anyhow!("SearchEngineManager not initialized"))?;
+
+        result_mgr.set_mode(mode)
+    }
+
+    pub fn add_results_batch(&mut self, results: Vec<SearchResultItem>) -> Result<()> {
+        let result_mgr = self
+            .result_manager
+            .as_mut()
+            .ok_or_else(|| anyhow!("SearchEngineManager not initialized"))?;
+
+        result_mgr.add_results_batch(results)
+    }
+
     pub fn set_filter(
         &mut self,
         enable_address_filter: bool,

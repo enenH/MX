@@ -11,10 +11,12 @@ import kotlinx.coroutines.*
 import moe.fuqiuluo.mamu.R
 import moe.fuqiuluo.mamu.floating.data.model.SavedAddress
 import moe.fuqiuluo.mamu.databinding.FloatingSavedAddressesLayoutBinding
+import moe.fuqiuluo.mamu.driver.SearchEngine
 import moe.fuqiuluo.mamu.driver.WuwaDriver
 import moe.fuqiuluo.mamu.floating.adapter.SavedAddressAdapter
 import moe.fuqiuluo.mamu.floating.data.local.MemoryBackupManager
 import moe.fuqiuluo.mamu.floating.data.local.SavedAddressRepository
+import moe.fuqiuluo.mamu.floating.data.model.DisplayMemRegionEntry
 import moe.fuqiuluo.mamu.floating.data.model.DisplayProcessInfo
 import moe.fuqiuluo.mamu.floating.data.model.DisplayValueType
 import moe.fuqiuluo.mamu.floating.dialog.BatchModifyValueDialog
@@ -30,6 +32,8 @@ class SavedAddressController(
     binding: FloatingSavedAddressesLayoutBinding,
     notification: NotificationOverlay
 ) : FloatingController<FloatingSavedAddressesLayoutBinding>(context, binding, notification) {
+    // 搜索结果更新回调
+    var onSearchResultsUpdated: ((totalCount: Long, ranges: List<DisplayMemRegionEntry>) -> Unit)? = null
     // 保存的地址列表（内存中）
     private val savedAddresses = mutableListOf<SavedAddress>()
 
@@ -681,8 +685,37 @@ class SavedAddressController(
             return
         }
 
-        // todo: 此功能需要与 SearchController 协作
-        notification.showWarning("选定为搜索结果功能需要与搜索页联动实现")
+        coroutineScope.launch {
+            val addresses = selectedItems.map { it.address }
+            val types = selectedItems.map {
+                it.displayValueType ?: DisplayValueType.DWORD
+            }.toTypedArray()
+
+            val success = withContext(Dispatchers.IO) {
+                SearchEngine.addResultsFromAddresses(addresses, types)
+            }
+
+            if (success) {
+                val totalCount = SearchEngine.getTotalResultCount()
+                notification.showSuccess("已将 ${selectedItems.size} 个地址设为搜索结果")
+
+                // 为每个地址创建独立的 DisplayMemRegionEntry，避免不连续地址的问题
+                val ranges = selectedItems.map { item ->
+                    val size = item.displayValueType?.memorySize ?: 4
+                    DisplayMemRegionEntry(
+                        start = item.address,
+                        end = item.address + size,
+                        type = 0x03, // r/w
+                        name = item.range.displayName,
+                        range = item.range
+                    )
+                }
+
+                onSearchResultsUpdated?.invoke(totalCount, ranges)
+            } else {
+                notification.showError("设置搜索结果失败")
+            }
+        }
     }
 
     /**

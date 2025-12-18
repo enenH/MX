@@ -321,6 +321,26 @@ class SearchController(
         }
     }
 
+    /**
+     * 从保存地址设置搜索结果后刷新 UI
+     */
+    fun onResultsFromSavedAddresses(totalFound: Long, ranges: List<DisplayMemRegionEntry>) {
+        val totalCount = totalFound.toInt()
+
+        val mmkv = MMKV.defaultMMKV()
+        if (totalCount > 0) {
+            val itemCountPerPage = mmkv.searchPageSize
+            val limit = itemCountPerPage.coerceAtMost(totalCount)
+            updateSearchResultCount(limit, totalCount)
+            searchResultAdapter.setRanges(ranges)
+            loadSearchResults(limit = limit)
+        } else {
+            searchResultAdapter.clearResults()
+            updateSearchResultCount(0, null)
+            showEmptyState(true)
+        }
+    }
+
     private fun showEmptyState(show: Boolean) {
         binding.emptyStateView.visibility = if (show) View.VISIBLE else View.GONE
         binding.resultsRecyclerView.visibility = if (show) View.GONE else View.VISIBLE

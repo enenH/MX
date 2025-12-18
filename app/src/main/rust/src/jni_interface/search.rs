@@ -14,6 +14,7 @@ use jni_macro::jni_method;
 use log::{Level, error, log_enabled};
 use std::ops::Not;
 use std::sync::Arc;
+use crate::search::result_manager::SearchResultMode;
 
 struct JniCallback {
     vm: JavaVM,
@@ -668,4 +669,56 @@ pub fn jni_set_progress_buffer(mut env: JNIEnv, _class: JObject, buffer: JObject
 #[jni_method(70, "moe/fuqiuluo/mamu/driver/SearchEngine", "nativeClearProgressBuffer", "()V")]
 pub fn jni_clear_progress_buffer(mut env: JNIEnv, _class: JObject) {
     jni_clear_shared_buffer(env, _class)
+}
+
+/// Adds results from saved addresses. Clears existing results and adds new ones.
+#[jni_method(70, "moe/fuqiuluo/mamu/driver/SearchEngine", "nativeAddResultsFromAddresses", "([J[I)Z")]
+pub fn jni_add_results_from_addresses(
+    mut env: JNIEnv,
+    _class: JObject,
+    addresses_array: JLongArray,
+    types_array: JIntArray,
+) -> jboolean {
+    (|| -> JniResult<jboolean> {
+        let addr_len = env.get_array_length(&addresses_array)? as usize;
+        let type_len = env.get_array_length(&types_array)? as usize;
+
+        if addr_len != type_len {
+            return Err(anyhow!("Address array and type array must have the same length"));
+        }
+
+        if addr_len == 0 {
+            return Err(anyhow!("Address array is empty"));
+        }
+
+        let mut addresses = vec![0i64; addr_len];
+        env.get_long_array_region(&addresses_array, 0, &mut addresses)?;
+
+        let mut types = vec![0i32; type_len];
+        env.get_int_array_region(&types_array, 0, &mut types)?;
+
+        let mut manager = SEARCH_ENGINE_MANAGER
+            .write()
+            .map_err(|_| anyhow!("Failed to acquire SearchEngineManager write lock"))?;
+
+        manager.clear_results()?;
+        manager.set_result_mode(SearchResultMode::Exact)?;
+
+        let mut results = Vec::with_capacity(addr_len);
+        for i in 0..addr_len {
+            let address = addresses[i] as u64;
+            let type_id = types[i];
+            let value_type = ValueType::from_id(type_id)
+                .ok_or_else(|| anyhow!("Invalid value type id: {}", type_id))?;
+            results.push(SearchResultItem::new_exact(address, value_type));
+        }
+
+        manager.add_results_batch(results)?;
+
+        if log_enabled!(Level::Debug) {
+            log::debug!("Added {} results from saved addresses", addr_len);
+        }
+
+        Ok(JNI_TRUE)
+    })().or_throw(&mut env)
 }

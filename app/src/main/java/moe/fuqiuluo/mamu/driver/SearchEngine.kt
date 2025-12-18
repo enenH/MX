@@ -71,7 +71,8 @@ object SearchEngine {
     ): Boolean {
         if (nativeInitSearchEngine(bufferSize, cacheFileDir, chunkSize)) {
             // Allocate shared buffer for progress communication.
-            sharedBuffer = ByteBuffer.allocateDirect(SHARED_BUFFER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
+            sharedBuffer =
+                ByteBuffer.allocateDirect(SHARED_BUFFER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
             nativeSetSharedBuffer(sharedBuffer!!)
             return true
         }
@@ -171,7 +172,12 @@ object SearchEngine {
         clearSharedBuffer()
         newSharedBuffer()
 
-        return nativeStartSearchAsync(query, type.nativeId, nativeRegions.toLongArray(), useDeepSearch)
+        return nativeStartSearchAsync(
+            query,
+            type.nativeId,
+            nativeRegions.toLongArray(),
+            useDeepSearch
+        )
     }
 
     /**
@@ -334,6 +340,23 @@ object SearchEngine {
     }
 
     /**
+     * Adds results from saved addresses.
+     * Clears existing search results and adds new ones from the provided addresses.
+     * @param addresses Array of memory addresses.
+     * @param types Array of value type IDs corresponding to each address.
+     * @return Whether the operation was successful.
+     */
+    fun addResultsFromAddresses(
+        addresses: Collection<Long>,
+        types: Array<DisplayValueType>
+    ): Boolean {
+        return nativeAddResultsFromAddresses(
+            addresses.toLongArray(),
+            types.map { it.nativeId }.toIntArray()
+        )
+    }
+
+    /**
      * Gets current search mode.
      * @return Current search mode (EXACT or FUZZY).
      */
@@ -361,7 +384,8 @@ object SearchEngine {
         if (sharedBuffer != null) {
             return false
         }
-        val sharedBuffer = ByteBuffer.allocateDirect(SHARED_BUFFER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
+        val sharedBuffer =
+            ByteBuffer.allocateDirect(SHARED_BUFFER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
         return setSharedBuffer(sharedBuffer)
     }
 
@@ -398,12 +422,22 @@ object SearchEngine {
     private fun clearProgressBuffer() = clearSharedBuffer()
 
     // Native method declarations.
-    private external fun nativeInitSearchEngine(bufferSize: Long, cacheFileDir: String, chunkSize: Long): Boolean
+    private external fun nativeInitSearchEngine(
+        bufferSize: Long,
+        cacheFileDir: String,
+        chunkSize: Long
+    ): Boolean
 
     private external fun nativeSetSharedBuffer(buffer: ByteBuffer): Boolean
     private external fun nativeClearSharedBuffer()
 
-    private external fun nativeStartSearchAsync(query: String, defaultType: Int, regions: LongArray, useDeepSearch: Boolean): Boolean
+    private external fun nativeStartSearchAsync(
+        query: String,
+        defaultType: Int,
+        regions: LongArray,
+        useDeepSearch: Boolean
+    ): Boolean
+
     private external fun nativeStartRefineAsync(query: String, defaultType: Int): Boolean
     private external fun nativeIsSearching(): Boolean
     private external fun nativeRequestCancel()
@@ -429,6 +463,7 @@ object SearchEngine {
         enableTypeFilter: Boolean,
         typeIds: IntArray,
     )
+
     private external fun nativeClearFilter()
     private external fun nativeGetCurrentSearchMode(): Int
     private external fun nativeRefineSearch(
@@ -437,9 +472,15 @@ object SearchEngine {
         cb: SearchProgressCallback
     ): Long
 
+    private external fun nativeAddResultsFromAddresses(
+        addresses: LongArray,
+        types: IntArray
+    ): Boolean
+
     // Legacy native methods kept for backward compatibility.
     @Deprecated("Low performance")
     private external fun nativeSetProgressBuffer(buffer: ByteBuffer): Boolean
+
     @Deprecated("Low performance")
     private external fun nativeClearProgressBuffer()
 }
