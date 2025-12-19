@@ -100,13 +100,16 @@ class SavedAddressAdapter(
 
             // 设置 checkbox 状态
             binding.checkbox.setOnCheckedChangeListener(null)
-            binding.checkbox.isChecked = selectedPositions.contains(position)
+            val isSelected = selectedPositions.contains(position)
+            binding.checkbox.isChecked = isSelected
+            updateItemBackground(isSelected)
             binding.checkbox.setOnCheckedChangeListener { _, isChecked ->
                 if (isChecked) {
                     selectedPositions.add(position)
                 } else {
                     selectedPositions.remove(position)
                 }
+                updateItemBackground(isChecked)
                 onSelectionChanged(selectedPositions.size)
             }
 
@@ -165,6 +168,12 @@ class SavedAddressAdapter(
             binding.itemContainer.setOnClickListener {
                 onItemClick(address, position)
             }
+        }
+
+        private fun updateItemBackground(isSelected: Boolean) {
+            binding.itemContainer.setBackgroundColor(
+                if (isSelected) 0x33448AFF else 0x00000000
+            )
         }
     }
 }
