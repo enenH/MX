@@ -20,6 +20,7 @@ import moe.fuqiuluo.mamu.floating.data.model.DisplayMemRegionEntry
 import moe.fuqiuluo.mamu.floating.data.model.DisplayProcessInfo
 import moe.fuqiuluo.mamu.floating.data.model.DisplayValueType
 import moe.fuqiuluo.mamu.floating.dialog.BatchModifyValueDialog
+import moe.fuqiuluo.mamu.floating.dialog.OffsetXorDialog
 import moe.fuqiuluo.mamu.floating.dialog.RemoveOptionsDialog
 import moe.fuqiuluo.mamu.utils.ValueTypeUtils
 import moe.fuqiuluo.mamu.utils.ByteFormatUtils.formatBytes
@@ -728,23 +729,17 @@ class SavedAddressController(
             return
         }
 
-        // todo 计算所有选中地址之间的偏移量的异或
-//        val addresses = selectedItems.map { it.address }.sorted()
-//        val baseAddress = addresses.first()
-//
-//        val offsets = addresses.drop(1).map { it - baseAddress }
-//        val xorResult = offsets.fold(0L) { acc, offset -> acc xor offset }
-//
-//        val message = buildString {
-//            append("基址: ${String.format("%X", baseAddress)}\n")
-//            append("偏移量异或结果: ${String.format("%X", xorResult)}\n")
-//            append("偏移量列表:\n")
-//            offsets.forEachIndexed { index, offset ->
-//                append("  ${index + 1}. +${String.format("%X", offset)}\n")
-//            }
-//        }
-//
-//        notification.showSuccess("偏移异或: ${String.format("%X", xorResult)}")
+        val clipboardManager =
+            context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+
+        val dialog = OffsetXorDialog(
+            context = context,
+            notification = notification,
+            clipboardManager = clipboardManager,
+            selectedAddresses = selectedItems
+        )
+
+        dialog.show()
     }
 
     /**
