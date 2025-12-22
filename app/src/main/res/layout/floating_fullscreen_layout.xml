@@ -284,7 +284,7 @@
                             android:layout_marginStart="@dimen/floating_spacing_sm"
                             android:layout_marginEnd="@dimen/floating_spacing_sm"
                             android:background="@drawable/tab_indicator_background"
-                            android:visibility="gone" />
+                            android:visibility="visible" />
 
                     </FrameLayout>
 
