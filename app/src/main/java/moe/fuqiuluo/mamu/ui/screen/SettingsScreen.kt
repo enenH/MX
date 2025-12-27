@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Brightness6
 import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Window
@@ -37,7 +38,8 @@ import moe.fuqiuluo.mamu.ui.tutorial.TutorialManager
 @Composable
 fun SettingsScreen(
     windowSizeClass: WindowSizeClass,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onShowAbout: () -> Unit
 ) {
     val adaptiveLayout = rememberAdaptiveLayoutInfo(windowSizeClass)
     BackHandler(onBack = onNavigateBack)
@@ -161,6 +163,17 @@ fun SettingsScreen(
                         title = "重新进入教程",
                         description = "重新显示新手教程",
                         onClick = { showTutorialResetDialog = true }
+                    )
+
+                    SettingsClickableItem(
+                        adaptiveLayout = adaptiveLayout,
+                        icon = Icons.Default.Info,
+                        title = "关于 Mamu",
+                        description = "查看版本信息、开源依赖和致谢",
+                        onClick = {
+                            onNavigateBack()
+                            onShowAbout()
+                        }
                     )
                 }
 

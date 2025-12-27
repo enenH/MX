@@ -34,7 +34,7 @@
             android:layout_marginStart="@dimen/floating_spacing_xs"
             android:layout_marginEnd="@dimen/floating_spacing_sm"
             android:fontFamily="monospace"
-            android:textSize="@dimen/floating_text_caption"
+            android:textSize="@dimen/floating_text_body"
             android:maxLines="10"
             android:ellipsize="end"
             app:layout_constraintBottom_toBottomOf="parent"

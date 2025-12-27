@@ -24,13 +24,20 @@ fun MainScreen(
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var showSettings by remember { mutableStateOf(false) }
+    var showAbout by remember { mutableStateOf(false) }
     var showTutorialPractice by remember { mutableStateOf(false) }
     val adaptiveLayout = rememberAdaptiveLayoutInfo(windowSizeClass)
 
-    if (showSettings) {
+    if (showAbout) {
+        AboutScreen(
+            windowSizeClass = windowSizeClass,
+            onNavigateBack = { showAbout = false }
+        )
+    } else if (showSettings) {
         SettingsScreen(
             windowSizeClass = windowSizeClass,
-            onNavigateBack = { showSettings = false }
+            onNavigateBack = { showSettings = false },
+            onShowAbout = { showAbout = true }
         )
     } else if (showTutorialPractice) {
         TutorialPracticeScreen(
