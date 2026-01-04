@@ -166,7 +166,9 @@ where
             let parent = &current_layer[candidate.parent_idx];
 
             // 检查此指针是否来自静态模块
-            if let Some((module_name, module_index, base_offset)) = classify_pointer(candidate.ptr_address, static_modules, config.data_start, config.bss_start) {
+            if let Some((module_name, module_index, base_offset)) =
+                classify_pointer(candidate.ptr_address, static_modules, config.data_start, config.bss_start, config.max_offset)
+            {
                 // 找到一条完整链！
                 let mut chain = PointerChain::with_capacity(config.target_address, parent.depth() + 2);
 
@@ -190,7 +192,7 @@ where
             // 如果未达到最大深度，继续向上搜索
             if depth + 1 < config.max_depth {
                 // 只将非静态指针添加到下一层（或者如果不是scan_static_only则全部添加）
-                if classify_pointer(candidate.ptr_address, static_modules, config.data_start, config.bss_start).is_none() {
+                if classify_pointer(candidate.ptr_address, static_modules, config.data_start, config.bss_start, config.max_offset).is_none() {
                     next_layer.push(parent.child(candidate.ptr_address, candidate.offset));
                 }
             }

@@ -42,6 +42,8 @@ pub struct VmStaticData {
     pub index: u32,
     /// True if this is a static/code module
     pub is_static: bool,
+    /// first module base address
+    pub first_module_base_addr: u64,
 }
 
 impl VmStaticData {
@@ -52,6 +54,7 @@ impl VmStaticData {
             end_address,
             index: 0,
             is_static,
+            first_module_base_addr: 0,
         }
     }
 

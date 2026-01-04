@@ -10,6 +10,8 @@
 mod layer_bfs;
 mod recursive_dfs;
 
+use crate::pointer_scan::chain_builder::layer_bfs::build_pointer_chains_layered_bfs;
+use crate::pointer_scan::chain_builder::recursive_dfs::build_pointer_chains_dfs;
 use crate::pointer_scan::storage::MmapQueue;
 use crate::pointer_scan::types::{PointerChain, PointerChainStep, PointerData, PointerScanConfig, VmStaticData};
 use anyhow::Result;
@@ -18,8 +20,6 @@ use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
-use crate::pointer_scan::chain_builder::layer_bfs::build_pointer_chains_layered_bfs;
-use crate::pointer_scan::chain_builder::recursive_dfs::build_pointer_chains_dfs;
 
 /// 在 MmapQueue<PointerData> 中二分查找值在 [min, max) 范围内的指针。
 /// 返回 (起始索引, 结束索引)。
@@ -89,19 +89,30 @@ fn find_pointers_to_range(pointer_lib: &MmapQueue<PointerData>, target: u64, max
 
 /// 检查地址是否属于静态模块。
 /// 如果找到，返回 (模块名, 模块索引, 基址偏移)。
-fn classify_pointer(address: u64, static_modules: &[VmStaticData], only_first_match: bool, match_bss: bool) -> Option<(String, u32, u64)> {
+fn classify_pointer(
+    address: u64, 
+    static_modules: &[VmStaticData], 
+    data_start: bool, 
+    bss_start: bool,
+    max_offset: u32,
+) -> Option<(String, u32, u64)> {
     for module in static_modules {
-        if match_bss {
-            // todo: 匹配.bss的基址
-            panic!("bss not yet implemented");
-        }
-        
-        if only_first_match && module.index != 0 { 
-            continue;
-        }
-        
         if module.contains(address) {
-            let offset = module.offset_from_base(address);
+            if bss_start {
+                // todo: 匹配.bss的基址
+                panic!("bss not yet implemented");
+            }
+
+            let offset = if data_start && module.index != 0 {
+                address.saturating_sub(module.first_module_base_addr)
+            } else {
+                module.offset_from_base(address)
+            };
+            
+            if offset > max_offset as u64 {
+                return None;
+            }
+
             return Some((module.name.clone(), module.index, offset));
         }
     }
