@@ -212,7 +212,8 @@ object PointerScanner {
         maxDepth: Int = 5,
         maxOffset: Int = 0x1000,
         align: Int = 4,
-        regions: List<MemoryRegionInfo>
+        regions: List<MemoryRegionInfo>,
+        isLayerBFS: Boolean
     ): Boolean {
         if (!isInitialized) {
             return false
@@ -240,7 +241,8 @@ object PointerScanner {
             align,
             regionAddresses,
             regionNames,
-            staticFlags
+            staticFlags,
+            isLayerBFS
         )
     }
 
@@ -305,7 +307,8 @@ object PointerScanner {
         align: Int,
         regions: LongArray,
         regionNames: Array<String>,
-        staticFlags: BooleanArray
+        staticFlags: BooleanArray,
+        isLayerBFS: Boolean
     ): Boolean
     private external fun nativeIsScanning(): Boolean
     private external fun nativeRequestCancel()

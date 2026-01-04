@@ -1,6 +1,7 @@
 package moe.fuqiuluo.mamu.floating.dialog
 
 import android.content.Context
+import android.util.Log
 import android.view.LayoutInflater
 import com.tencent.mmkv.MMKV
 import kotlinx.coroutines.CoroutineScope
@@ -13,6 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.fuqiuluo.mamu.R
 import moe.fuqiuluo.mamu.data.settings.getDialogOpacity
+import moe.fuqiuluo.mamu.data.settings.searchPageSize
 import moe.fuqiuluo.mamu.databinding.DialogPointerScanInputBinding
 import moe.fuqiuluo.mamu.driver.MemoryRegionInfo
 import moe.fuqiuluo.mamu.driver.PointerChainResult
@@ -24,6 +26,7 @@ import moe.fuqiuluo.mamu.floating.event.UIActionEvent
 import moe.fuqiuluo.mamu.floating.ext.divideToSimpleMemoryRange
 import moe.fuqiuluo.mamu.widget.NotificationOverlay
 import java.lang.Long.parseUnsignedLong
+import kotlin.math.min
 
 /**
  * 指针扫描对话框
@@ -34,6 +37,10 @@ class PointerScanDialog(
     private val notification: NotificationOverlay,
     private val onScanCompleted: ((results: List<PointerChainResult>) -> Unit)? = null
 ) : BaseDialog(context) {
+    companion object {
+        private const val TAG = "PointerScanDialog"
+    }
+
     private val scanScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // 扫描状态
@@ -85,15 +92,14 @@ class PointerScanDialog(
                 0x1000
             }.coerceIn(0x100, 0x100000)
 
-            // 读取结果数量限制
+            // 读取结果数量限制（0 表示无限制）
             val maxResults = try {
-                binding.inputMaxResults.text?.toString()?.toIntOrNull() ?: 1000
+                binding.inputMaxResults.text?.toString()?.toIntOrNull() ?: 0
             } catch (e: Exception) {
-                1000
-            }.coerceIn(1, 100000)
+                0
+            }.coerceIn(0, 100000)
 
-            // 读取循环引用检测开关
-            val truncateCycles = binding.switchTruncateCycles.isChecked
+            val isLayerBFS = binding.switchLayerBfs.isChecked
 
             if (!WuwaDriver.isProcessBound) {
                 notification.showError(context.getString(R.string.error_process_not_bound))
@@ -101,12 +107,12 @@ class PointerScanDialog(
             }
 
             dialog.dismiss()
-            startPointerScan(targetAddress, maxDepth, maxOffset, maxResults, truncateCycles)
+            startPointerScan(targetAddress, maxDepth, maxOffset, maxResults, isLayerBFS)
         }
     }
 
     private fun startPointerScan(
-        targetAddress: Long, maxDepth: Int, maxOffset: Int, maxResults: Int, truncateCycles: Boolean
+        targetAddress: Long, maxDepth: Int, maxOffset: Int, maxResults: Int, isLayerBFS: Boolean
     ) {
         scanScope.launch {
             // 获取内存区域
@@ -149,7 +155,8 @@ class PointerScanDialog(
                 maxDepth = maxDepth,
                 maxOffset = maxOffset,
                 align = 4, // 对齐固定为4
-                regions = regions
+                regions = regions,
+                isLayerBFS = isLayerBFS
             )
 
             if (success) {
@@ -229,7 +236,16 @@ class PointerScanDialog(
         if (chainCount > 0) {
             // 加载结果并通知回调（应用数量限制）
             scanScope.launch(Dispatchers.IO) {
-                val actualCount = chainCount.coerceAtMost(maxResults.toLong()).toInt()
+
+                var actualCount =
+                    if (maxResults != 0) min(chainCount, maxResults.toLong()).toInt() else {
+                        chainCount
+                    }.toInt()
+                val mmkv = MMKV.defaultMMKV()
+                actualCount = mmkv.searchPageSize.coerceAtMost(actualCount)
+
+                Log.d(TAG, "搜索结果数 $chainCount $actualCount $maxResults")
+
                 val chains = PointerScanner.getChains(0, actualCount)
                 withContext(Dispatchers.Main) {
                     onScanCompleted?.invoke(chains.toList())

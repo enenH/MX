@@ -1307,6 +1307,7 @@ class MemoryPreviewController(
                 ModuleListDialog(
                     context = context,
                     modules = modules,
+                    notification = notification,
                     onModuleSelected = { selectedModule ->
                         // 跳转到选中模块的起始地址
                         jumpToPage(selectedModule.start)
@@ -1317,6 +1318,9 @@ class MemoryPreviewController(
                                 )
                             }"
                         )
+                    },
+                    onGoto = { address ->
+                        jumpToPage(address)
                     }
                 ).show()
 

@@ -178,6 +178,8 @@ pub struct PointerScanConfig {
     pub include_heap: bool,
     /// Include stack regions in scan
     pub include_stack: bool,
+    /// Use Layer-BFS to build pointer chain
+    pub is_layer_bfs: bool
 }
 
 impl Default for PointerScanConfig {
@@ -190,6 +192,7 @@ impl Default for PointerScanConfig {
             scan_static_only: true,
             include_heap: true,
             include_stack: false,
+            is_layer_bfs: false
         }
     }
 }

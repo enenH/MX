@@ -103,16 +103,31 @@ impl PointerScanManager {
 
     /// Get the number of chain results.
     pub fn get_chain_count(&self) -> usize {
+        if log_enabled!(Level::Debug) {
+            info!("PointerScanManager get_chain count: {}", self.chain_results.len());
+        }
         self.chain_results.len()
     }
 
     /// Get a slice of chain results.
     pub fn get_chain_results(&self, start: usize, count: usize) -> Vec<PointerChain> {
+        if log_enabled!(Level::Debug) {
+            info!("PointerScanManager get_chain results(start = {}, count = {})", start, count);
+        }
+
         let end = std::cmp::min(start + count, self.chain_results.len());
         if start >= self.chain_results.len() {
             return Vec::new();
         }
-        self.chain_results[start..end].to_vec()
+        let rrt = self.chain_results[start..end].to_vec();
+
+        if log_enabled!(Level::Debug) {
+            for x in &rrt {
+                info!("---- {}", x.format());
+            }
+        }
+
+        rrt
     }
 
     /// Clear all results and reset state.
@@ -135,6 +150,7 @@ impl PointerScanManager {
         align: u32,
         regions: Vec<ScanRegion>,
         static_modules: Vec<VmStaticData>,
+        is_layer_bfs: bool,
     ) -> Result<()> {
         if self.is_scanning() {
             self.last_error = ScanErrorCode::AlreadyScanning;
@@ -155,6 +171,7 @@ impl PointerScanManager {
             scan_static_only: true,
             include_heap: true,
             include_stack: false,
+            is_layer_bfs,
         };
 
         // Reset state
@@ -280,11 +297,11 @@ impl PointerScanManager {
             &pointer_lib,
             &static_modules,
             &config,
-            |depth, chains_found| {
+            |depth, max_depth, chains_found| {
                 if let Ok(manager) = POINTER_SCAN_MANAGER.read() {
                     manager
                         .shared_buffer
-                        .update_building_progress(depth as i32, config.max_depth as i32, chains_found);
+                        .update_building_progress(depth as i32, max_depth, chains_found);
                 }
             },
             || check_cancelled(),

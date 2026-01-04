@@ -525,6 +525,10 @@ class SearchController(
         fuzzySearchDialog?.showDialogIfSearchCompleted()
     }
 
+    fun showPointerScannerProgressIfNeeded() {
+        pointerScanDialog?.showProgressDialogIfScanning()
+    }
+
     private fun onRefineCompleted(totalFound: Long) {
         val totalCount = totalFound.toInt()
 

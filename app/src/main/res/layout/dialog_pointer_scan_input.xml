@@ -126,11 +126,11 @@
                 android:cursorVisible="true"
                 android:focusable="true"
                 android:focusableInTouchMode="true"
-                android:hint="默认: 5"
+                android:hint="默认: 4"
                 android:inputType="number"
                 android:paddingStart="@dimen/floating_spacing_xs"
                 android:paddingEnd="@dimen/floating_spacing_xs"
-                android:text="5"
+                android:text="4"
                 android:textColor="@color/floating_text_primary"
                 android:textColorHint="@color/floating_text_secondary"
                 android:textCursorDrawable="@null"
@@ -195,11 +195,11 @@
                     android:cursorVisible="true"
                     android:focusable="true"
                     android:focusableInTouchMode="true"
-                    android:hint="默认: 1000"
+                    android:hint="默认: 3e8"
                     android:inputType="textCapCharacters"
                     android:paddingStart="@dimen/floating_spacing_xs"
                     android:paddingEnd="@dimen/floating_spacing_xs"
-                    android:text="1000"
+                    android:text="3e8"
                     android:textColor="@color/floating_text_primary"
                     android:textColorHint="@color/floating_text_secondary"
                     android:textCursorDrawable="@null"
@@ -290,7 +290,7 @@
                     style="@style/FloatingText.Small"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="缩短存在循环引用的指针链"
+                    android:text="使用分层BFS构造指针链"
                     android:textColor="@color/floating_text_primary" />
 
                 <com.google.android.material.textview.MaterialTextView
@@ -298,13 +298,13 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="检测并优化循环引用，提高结果质量"
+                    android:text="前提是你有足够多的内存去支持这项操作"
                     android:textColor="@color/floating_text_secondary"
                     android:alpha="0.7" />
             </LinearLayout>
 
             <com.google.android.material.materialswitch.MaterialSwitch
-                android:id="@+id/switch_truncate_cycles"
+                android:id="@+id/switch_layer_bfs"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:checked="true" />
