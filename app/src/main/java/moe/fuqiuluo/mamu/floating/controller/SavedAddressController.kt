@@ -216,7 +216,7 @@ class SavedAddressController(
                 // 对ranges进行排序（如果存在），以便使用二分查找
                 val sortedRanges = event.ranges?.sortedBy { it.start }
 
-                // 转换MemoryRow为SavedAddress
+                // 转换MemoryRow为SavedAddress，使用事件中指定的类型
                 val addresses = event.selectedItems.map { row ->
                     // 使用二分查找从ranges中找到匹配的range
                     val range = findRangeForAddress(row.address, sortedRanges)
@@ -226,7 +226,7 @@ class SavedAddressController(
                     SavedAddress(
                         address = row.address,
                         name = "Var #${String.format("%X", row.address)}",
-                        valueType = DisplayValueType.DWORD.nativeId,
+                        valueType = event.valueType.nativeId,
                         value = "",
                         isFrozen = false,
                         range = range

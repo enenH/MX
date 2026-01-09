@@ -1,6 +1,7 @@
 package moe.fuqiuluo.mamu.floating.event
 
 import moe.fuqiuluo.mamu.floating.data.model.DisplayMemRegionEntry
+import moe.fuqiuluo.mamu.floating.data.model.DisplayValueType
 import moe.fuqiuluo.mamu.floating.data.model.MemoryPreviewItem
 
 /**
@@ -8,5 +9,6 @@ import moe.fuqiuluo.mamu.floating.data.model.MemoryPreviewItem
  */
 data class SaveMemoryPreviewEvent(
     val selectedItems: List<MemoryPreviewItem.MemoryRow>,
-    val ranges: List<DisplayMemRegionEntry>?
+    val ranges: List<DisplayMemRegionEntry>?,
+    val valueType: DisplayValueType = DisplayValueType.DWORD
 )

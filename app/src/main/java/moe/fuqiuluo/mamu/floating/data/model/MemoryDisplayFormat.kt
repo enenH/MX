@@ -119,9 +119,32 @@ enum class MemoryDisplayFormat(
         appendCode = true
     );
 
+    /**
+     * 转换为对应的 DisplayValueType（用于保存地址）
+     * 只有数值类型可以转换，其他类型返回 null
+     */
+    fun toDisplayValueType(): DisplayValueType? {
+        return when (this) {
+            DWORD -> DisplayValueType.DWORD
+            FLOAT -> DisplayValueType.FLOAT
+            DOUBLE -> DisplayValueType.DOUBLE
+            WORD -> DisplayValueType.WORD
+            BYTE -> DisplayValueType.BYTE
+            QWORD -> DisplayValueType.QWORD
+            else -> null
+        }
+    }
+
     companion object {
         fun fromCode(code: String): MemoryDisplayFormat? {
             return entries.find { it.code == code }
+        }
+
+        /**
+         * 从格式列表中筛选出可保存的类型（有对应 DisplayValueType 的格式）
+         */
+        fun filterSavableFormats(formats: List<MemoryDisplayFormat>): List<MemoryDisplayFormat> {
+            return formats.filter { it.toDisplayValueType() != null }
         }
 
         /**

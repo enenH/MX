@@ -649,9 +649,41 @@ class MemoryPreviewController(
         }
 
         val selectedRows = adapter.getSelectedRows()
-        coroutineScope.launch {
-            FloatingEventBus.emitSaveMemoryPreview(SaveMemoryPreviewEvent(selectedRows, memoryRegions))
-            notification.showSuccess("已保存 ${selectedRows.size} 个地址")
+        
+        // 筛选出可保存的类型
+        val savableFormats = MemoryDisplayFormat.filterSavableFormats(currentFormats)
+        
+        if (savableFormats.isEmpty()) {
+            notification.showWarning("当前显示格式中没有可保存的类型")
+            return
+        }
+        
+        if (savableFormats.size == 1) {
+            // 只有一种可保存类型，直接保存
+            val valueType = savableFormats.first().toDisplayValueType() ?: DisplayValueType.DWORD
+            coroutineScope.launch {
+                FloatingEventBus.emitSaveMemoryPreview(SaveMemoryPreviewEvent(selectedRows, memoryRegions, valueType))
+                notification.showSuccess("已保存 ${selectedRows.size} 个地址 (${valueType.code})")
+            }
+        } else {
+            // 多种可保存类型，弹窗选择
+            val formatNames = savableFormats.map { "${it.code}: ${it.displayName}" }.toTypedArray()
+            val formatColors = savableFormats.map { it.textColor }.toTypedArray()
+            
+            context.simpleSingleChoiceDialog(
+                title = "选择保存类型",
+                options = formatNames,
+                textColors = formatColors,
+                showRadioButton = false,
+                onSingleChoice = { which ->
+                    val selectedFormat = savableFormats[which]
+                    val valueType = selectedFormat.toDisplayValueType() ?: DisplayValueType.DWORD
+                    coroutineScope.launch {
+                        FloatingEventBus.emitSaveMemoryPreview(SaveMemoryPreviewEvent(selectedRows, memoryRegions, valueType))
+                        notification.showSuccess("已保存 ${selectedRows.size} 个地址 (${valueType.code})")
+                    }
+                }
+            )
         }
     }
 
