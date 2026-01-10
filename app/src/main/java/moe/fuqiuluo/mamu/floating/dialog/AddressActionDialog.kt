@@ -105,9 +105,38 @@ class AddressActionDialog(
     }
 
     /**
+     * 获取值的16进制字符串表示
+     */
+    private fun getHexString(): String {
+        return try {
+            val bytes = ValueTypeUtils.parseExprToBytes(value, valueType)
+            bytes.joinToString("") { "%02X".format(it) }
+        } catch (e: Exception) {
+            // 回退到简单的整数转换
+            "%X".format(value.toLongOrNull() ?: 0)
+        }
+    }
+
+    /**
+     * 获取值的反向16进制字符串表示（字节顺序反转）
+     */
+    private fun getReverseHexString(): String {
+        return try {
+            val bytes = ValueTypeUtils.parseExprToBytes(value, valueType)
+            bytes.reversedArray().joinToString("") { "%02X".format(it) }
+        } catch (e: Exception) {
+            // 回退到简单的整数转换
+            "%X".format(value.toLongOrNull() ?: 0).reversed()
+        }
+    }
+
+    /**
      * 构建操作列表
      */
     private fun buildActionList(): List<ActionItem> {
+        val hexString = getHexString()
+        val reverseHexString = getReverseHexString()
+
         val actions = mutableListOf(
             ActionItem("偏移量计算器", R.drawable.calculate_24px) {
                 dismiss()
@@ -136,13 +165,13 @@ class AddressActionDialog(
                 copyValue()
             },
             ActionItem(
-                "复制16进制值: ${"%X".format(value.toLongOrNull() ?: 0)}",
+                "复制16进制值: $hexString",
                 R.drawable.content_copy_24px
             ) {
                 copyHexValue()
             },
             ActionItem(
-                "复制反16进制值: ${"%X".format(value.toLongOrNull() ?: 0).reversed()}",
+                "复制反16进制值: $reverseHexString",
                 R.drawable.content_copy_24px
             ) {
                 copyReverseHexValue()
