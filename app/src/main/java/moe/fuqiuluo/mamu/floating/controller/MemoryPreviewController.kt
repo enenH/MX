@@ -544,7 +544,9 @@ class MemoryPreviewController(
                         }
                     }
                     override fun onJumpToAddress(address: Long) { jumpToAddress(address) }
-                }
+                },
+                source = AddressActionSource.MEMORY_PREVIEW,
+                displayFormats = currentFormats
             ).show()
         }
     }
