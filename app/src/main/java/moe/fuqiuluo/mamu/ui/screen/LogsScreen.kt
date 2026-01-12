@@ -172,7 +172,7 @@ fun LogsScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(Dimens.paddingXs(adaptiveLayout))
                             ) {
-                                itemsIndexed(filteredLogs, key = { index, _ -> index }) { _, entry ->
+                                itemsIndexed(filteredLogs, key = { _, entry -> entry.id }) { _, entry ->
                                     LogLine(entry, adaptiveLayout, wordWrap = true)
                                 }
                             }
@@ -188,7 +188,7 @@ fun LogsScreen(
                                     modifier = Modifier.fillMaxHeight(),
                                     contentPadding = PaddingValues(Dimens.paddingXs(adaptiveLayout))
                                 ) {
-                                    itemsIndexed(filteredLogs, key = { index, _ -> index }) { _, entry ->
+                                    itemsIndexed(filteredLogs, key = { _, entry -> entry.id }) { _, entry ->
                                         LogLine(entry, adaptiveLayout, wordWrap = false)
                                     }
                                 }
@@ -247,17 +247,23 @@ private fun LogLine(
     adaptiveLayout: moe.fuqiuluo.mamu.ui.theme.AdaptiveLayoutInfo,
     wordWrap: Boolean = false
 ) {
-    val levelColor = when (entry.level) {
-        LogLevel.VERBOSE -> Color(0xFF9E9E9E)
-        LogLevel.DEBUG -> Color(0xFF2196F3)
-        LogLevel.INFO -> Color(0xFF4CAF50)
-        LogLevel.WARNING -> Color(0xFFFF9800)
-        LogLevel.ERROR -> Color(0xFFF44336)
-        LogLevel.FATAL -> Color(0xFF9C27B0)
-        else -> Color.Gray
+    // Cache levelColor - only recompute when entry.level changes
+    val levelColor = remember(entry.level) {
+        when (entry.level) {
+            LogLevel.VERBOSE -> Color(0xFF9E9E9E)
+            LogLevel.DEBUG -> Color(0xFF2196F3)
+            LogLevel.INFO -> Color(0xFF4CAF50)
+            LogLevel.WARNING -> Color(0xFFFF9800)
+            LogLevel.ERROR -> Color(0xFFF44336)
+            LogLevel.FATAL -> Color(0xFF9C27B0)
+            else -> Color.Gray
+        }
     }
 
-    val fontSize = Dimens.scaled(adaptiveLayout, 11f).value.sp
+    // Cache fontSize - only recompute when adaptiveLayout changes
+    val fontSize = remember(adaptiveLayout) {
+        Dimens.scaled(adaptiveLayout, 11f).value.sp
+    }
 
     if (wordWrap) {
         // 换行模式：前缀 + 消息换行

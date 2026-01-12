@@ -3,6 +3,7 @@ package moe.fuqiuluo.mamu.data.model
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * 日志来源类型
@@ -43,6 +44,7 @@ enum class LogLevel(val label: String, val priority: Int) {
  * 日志条目
  */
 data class LogEntry(
+    val id: Long = idGenerator.incrementAndGet(),
     val timestamp: Long,
     val level: LogLevel,
     val tag: String,
@@ -57,6 +59,10 @@ data class LogEntry(
 
     val formattedDate: String
         get() = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(Date(timestamp))
+
+    companion object {
+        private val idGenerator = AtomicLong(0)
+    }
 }
 
 /**
