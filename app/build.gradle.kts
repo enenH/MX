@@ -255,7 +255,7 @@ tasks.register<Exec>("buildRustAndroid") {
     val isRelease = isReleaseBuild()
     val buildMode = if (isRelease) "release" else "debug"
 
-    val args = mutableListOf("cargo", "build", "--target", "aarch64-linux-android")
+    val args = mutableListOf("cargo","+nightly", "build", "--target", "aarch64-linux-android")
     if (isRelease) {
         args.add("--release")
     }
